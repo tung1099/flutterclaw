@@ -30,7 +30,12 @@ class OpenAiProvider implements LlmProvider {
   Future<LlmResponse> chatCompletion(LlmRequest request) async {
     final url = _buildUrl(request.apiBase);
     final body = _buildBody(request, stream: false);
-    _logChatRequest(operation: 'chatCompletion', url: url, apiBase: request.apiBase, body: body);
+    _logChatRequest(
+      operation: 'chatCompletion',
+      url: url,
+      apiBase: request.apiBase,
+      body: body,
+    );
 
     try {
       final response = await _dio.post<Map<String, dynamic>>(
@@ -54,7 +59,16 @@ class OpenAiProvider implements LlmProvider {
   Stream<LlmStreamEvent> chatCompletionStream(LlmRequest request) async* {
     final url = _buildUrl(request.apiBase);
     final body = _buildBody(request, stream: true);
-    _logChatRequest(operation: 'chatCompletionStream', url: url, apiBase: request.apiBase, body: body);
+    _logChatRequest(
+      operation: 'chatCompletionStream',
+      url: url,
+      apiBase: request.apiBase,
+      body: body,
+    );
+
+    _log.info(
+      '[OpenAI Stream] === START === model=${request.model} apiBase=${request.apiBase} tools=${request.tools?.length ?? 0}',
+    );
 
     Response<ResponseBody> response;
     try {
@@ -72,8 +86,13 @@ class OpenAiProvider implements LlmProvider {
       throw await _handleDioError(e);
     }
 
+    _log.info(
+      '[OpenAI Stream] Response received, status=${response.statusCode}',
+    );
+
     final bodyStream = response.data!.stream;
     String buffer = '';
+    String accumulatedContent = '';
     final toolCallBuffers = <int, _ToolCallAccumulator>{};
 
     await for (final chunk in bodyStream) {
@@ -108,9 +127,17 @@ class OpenAiProvider implements LlmProvider {
 
         final finishReason = choice['finish_reason'] as String?;
 
+        _log.info(
+          '[OpenAI Stream] finishReason=$finishReason, content length=${accumulatedContent.length}',
+        );
+
         // Content delta
         final content = delta['content'] as String?;
         if (content != null && content.isNotEmpty) {
+          accumulatedContent += content;
+          _log.info(
+            '[OpenAI Stream] contentDelta: "${content.substring(0, content.length.clamp(0, 50))}..."',
+          );
           yield LlmStreamEvent(contentDelta: content);
         }
 
@@ -169,6 +196,26 @@ class OpenAiProvider implements LlmProvider {
             }
           }
 
+          // Always check for Qwen3-style tool_call in content (not just "tool_calls" finish_reason)
+          if (accumulatedContent.isNotEmpty &&
+              accumulatedContent.contains('<tool_call>')) {
+            _log.info(
+              '[Qwen3] Found <tool_call> in content (length=${accumulatedContent.length}), parsing...',
+            );
+            final toolCalls = _parseToolCallsFromContent(accumulatedContent);
+            _log.info(
+              '[Qwen3] Parsed ${toolCalls.length} tool calls: ${toolCalls.map((t) => t.function.name).join(", ")}',
+            );
+            for (final tc in toolCalls) {
+              _log.info('[Qwen3] Yielding toolCallDelta: ${tc.function.name}');
+              yield LlmStreamEvent(toolCallDelta: tc);
+            }
+          } else {
+            _log.info(
+              '[Qwen3] No <tool_call> found in content, skipping. Content preview: ${accumulatedContent.substring(0, accumulatedContent.length.clamp(0, 100))}',
+            );
+          }
+
           final usage = json['usage'] as Map<String, dynamic>?;
           yield LlmStreamEvent(
             finishReason: finishReason,
@@ -198,6 +245,19 @@ class OpenAiProvider implements LlmProvider {
             ),
           );
         }
+      }
+    }
+
+    // Safety: also check for Qwen3-style tool_call in content
+    if (accumulatedContent.isNotEmpty &&
+        accumulatedContent.contains('<tool_call>')) {
+      _log.info('[Qwen3 Safety] Found <tool_call> in content, parsing...');
+      final toolCalls = _parseToolCallsFromContent(accumulatedContent);
+      _log.info(
+        '[Qwen3 Safety] Parsed ${toolCalls.length} tool calls: ${toolCalls.map((t) => t.function.name).join(", ")}',
+      );
+      for (final tc in toolCalls) {
+        yield LlmStreamEvent(toolCallDelta: tc);
       }
     }
 
@@ -278,7 +338,9 @@ class OpenAiProvider implements LlmProvider {
       if (messages.isNotEmpty &&
           messages.last['role'] == converted['role'] &&
           converted['role'] != 'tool') {
-        final placeholderRole = converted['role'] == 'user' ? 'assistant' : 'user';
+        final placeholderRole = converted['role'] == 'user'
+            ? 'assistant'
+            : 'user';
         messages.add({'role': placeholderRole, 'content': '...'});
       }
       messages.add(converted);
@@ -289,7 +351,10 @@ class OpenAiProvider implements LlmProvider {
     // orphaned tool_calls, strip them to prevent OpenAI 400 errors.
     _sanitizeToolCallPairs(messages);
 
-    final modelForApi = _openRouterUpstreamModelId(request.apiBase, request.model);
+    final modelForApi = _openRouterUpstreamModelId(
+      request.apiBase,
+      request.model,
+    );
     final reasoning = _isReasoningModel(modelForApi);
 
     final body = <String, dynamic>{
@@ -369,7 +434,11 @@ class OpenAiProvider implements LlmProvider {
       'role': m.role,
       'content': m.role == 'tool' && m.content is String
           ? _convertToolContent(m.content as String, stripImages: stripImages)
-          : _convertContent(m.content, apiBase: apiBase, stripImages: stripImages),
+          : _convertContent(
+              m.content,
+              apiBase: apiBase,
+              stripImages: stripImages,
+            ),
     };
     if (m.name != null) map['name'] = m.name;
     if (m.toolCalls != null) {
@@ -402,14 +471,17 @@ class OpenAiProvider implements LlmProvider {
     return content;
   }
 
-
   /// Converts content to OpenAI format.
   /// Neutral image blocks `{type:"image", data, mimeType}` become
   /// `{type:"image_url", image_url:{url:"data:mimeType;base64,data"}}`.
   /// Neutral document blocks: on OpenRouter, sent as `{type:"file", file:{…}}`
   /// for native PDF support; on other endpoints, extracted to text.
   /// Neutral audio blocks `{type:"audio", data, format}` become `input_audio` blocks.
-  dynamic _convertContent(dynamic content, {String apiBase = '', bool stripImages = false}) {
+  dynamic _convertContent(
+    dynamic content, {
+    String apiBase = '',
+    bool stripImages = false,
+  }) {
     if (content is! List) return content;
     final items = stripImages
         ? content.where((item) {
@@ -423,8 +495,8 @@ class OpenAiProvider implements LlmProvider {
       final map = item is Map<String, dynamic>
           ? item
           : item is Map
-              ? Map<String, dynamic>.from(item)
-              : null;
+          ? Map<String, dynamic>.from(item)
+          : null;
       if (map == null) return item;
 
       if (map['type'] == 'image' &&
@@ -432,9 +504,7 @@ class OpenAiProvider implements LlmProvider {
           map.containsKey('mimeType')) {
         return {
           'type': 'image_url',
-          'image_url': {
-            'url': 'data:${map['mimeType']};base64,${map['data']}',
-          },
+          'image_url': {'url': 'data:${map['mimeType']};base64,${map['data']}'},
         };
       }
 
@@ -467,15 +537,13 @@ class OpenAiProvider implements LlmProvider {
         // PDF: extract readable text from the binary structure.
         final extracted = _extractPdfText(map['data'] as String);
         if (extracted.isNotEmpty) {
-          return {
-            'type': 'text',
-            'text': '=== $fileName ===\n$extracted',
-          };
+          return {'type': 'text', 'text': '=== $fileName ===\n$extracted'};
         }
         // Fallback: scanned / encrypted PDF — content cannot be extracted
         return {
           'type': 'text',
-          'text': '[PDF "$fileName" — content could not be extracted. '
+          'text':
+              '[PDF "$fileName" — content could not be extracted. '
               'Use an Anthropic model for native PDF support.]',
         };
       }
@@ -511,17 +579,22 @@ class OpenAiProvider implements LlmProvider {
 
       // FlateDecode stream pattern: find stream…endstream regions preceded by
       // a /FlateDecode (or /Fl ) filter in the same object dictionary.
-      final streamRe = RegExp(r'stream\r?\n([\s\S]*?)\r?\nendstream',
-          dotAll: true);
+      final streamRe = RegExp(
+        r'stream\r?\n([\s\S]*?)\r?\nendstream',
+        dotAll: true,
+      );
       final flatRe = RegExp(r'/FlateDecode|/Fl\b');
 
       for (final m in streamRe.allMatches(raw)) {
         // Only attempt decompress when the preceding ~200 chars hint FlateDecode
         final before = raw.substring(
-            (m.start - 200).clamp(0, m.start), m.start);
+          (m.start - 200).clamp(0, m.start),
+          m.start,
+        );
         if (!flatRe.hasMatch(before)) continue;
         try {
-          final compressed = m.group(1)!
+          final compressed = m
+              .group(1)!
               .codeUnits
               .map((c) => c & 0xFF)
               .toList();
@@ -545,12 +618,18 @@ class OpenAiProvider implements LlmProvider {
           final blockText = block.group(1)!;
           for (final m in tjSingle.allMatches(blockText)) {
             final t = _decodePdfString(m.group(1)!);
-            if (t.isNotEmpty) buffer..write(t)..write(' ');
+            if (t.isNotEmpty)
+              buffer
+                ..write(t)
+                ..write(' ');
           }
           for (final m in tjArray.allMatches(blockText)) {
             for (final item in tjItem.allMatches(m.group(1)!)) {
               final t = _decodePdfString(item.group(1)!);
-              if (t.isNotEmpty) buffer..write(t)..write(' ');
+              if (t.isNotEmpty)
+                buffer
+                  ..write(t)
+                  ..write(' ');
             }
           }
         }
@@ -597,6 +676,8 @@ class OpenAiProvider implements LlmProvider {
         toolCalls = tcList
             .map((e) => ToolCall.fromJson(e as Map<String, dynamic>))
             .toList();
+      } else if (content != null && content.contains('<tool_call>')) {
+        toolCalls = _parseToolCallsFromContent(content);
       }
     }
 
@@ -664,8 +745,9 @@ class OpenAiProvider implements LlmProvider {
     return null;
   }
 
-  static String _truncateForLog(String s, [int max = 6000]) =>
-      s.length <= max ? s : '${s.substring(0, max)}… [+${s.length - max} chars]';
+  static String _truncateForLog(String s, [int max = 6000]) => s.length <= max
+      ? s
+      : '${s.substring(0, max)}… [+${s.length - max} chars]';
 
   /// With [ResponseType.stream], failed responses expose [ResponseBody]; Dio does
   /// not decode it to JSON/string, so we must drain the stream for logs and parsing.
@@ -706,7 +788,8 @@ class OpenAiProvider implements LlmProvider {
     String? providerMsg = _extractProviderErrorMessage(map);
 
     // Dio often puts a long generic explanation in e.message; prefer API body.
-    String message = providerMsg ??
+    String message =
+        providerMsg ??
         (rawData is String && rawData.length < 4000 ? rawData : null) ??
         e.message ??
         'Unknown error';
@@ -722,7 +805,9 @@ class OpenAiProvider implements LlmProvider {
       'providerMessage=${providerMsg ?? "(none parsed)"}',
     );
     if (map != null) {
-      _log.severe('error.json (truncated): ${_truncateForLog(jsonEncode(map))}');
+      _log.severe(
+        'error.json (truncated): ${_truncateForLog(jsonEncode(map))}',
+      );
     } else if (rawData != null) {
       final s = rawData.toString();
       _log.severe('error.body (truncated): ${_truncateForLog(s)}');
@@ -730,7 +815,8 @@ class OpenAiProvider implements LlmProvider {
       _log.severe('error.body: <empty — network/CORS/timeout?>');
     }
 
-    var forUser = providerMsg ??
+    var forUser =
+        providerMsg ??
         (rawData is String && rawData.length < 4000 ? rawData : null) ??
         message;
 
@@ -739,8 +825,10 @@ class OpenAiProvider implements LlmProvider {
         (forUser.toLowerCase().contains('context_length_exceeded') ||
             forUser.toLowerCase().contains('maximum context length') ||
             forUser.toLowerCase().contains('prompt is too long') ||
-            forUser.toLowerCase().contains('context length') && forUser.toLowerCase().contains('exceeded'))) {
-      forUser = 'Context too large for model.\n\n'
+            forUser.toLowerCase().contains('context length') &&
+                forUser.toLowerCase().contains('exceeded'))) {
+      forUser =
+          'Context too large for model.\n\n'
           'Your conversation has exceeded the model\'s context window. '
           'Try one of these options:\n\n'
           '1. Use the /compact command to summarize old messages\n'
@@ -755,12 +843,51 @@ class OpenAiProvider implements LlmProvider {
       cause: e,
     );
   }
+
+  List<ToolCall> _parseToolCallsFromContent(String content) {
+    final toolCalls = <ToolCall>[];
+    final pattern = RegExp(
+      r'<tool_call>\s*[\n\r]*\s*\{\s*[\n\r]*"name"\s*:\s*"([^"]+)"[\s\S]*?"arguments"\s*:\s*(\{[\s\S]*?\})[\s\S]*\}\s*</tool_call>',
+      multiLine: true,
+    );
+    for (final match in pattern.allMatches(content)) {
+      final name = match.group(1);
+      final argsStr = match.group(2);
+      if (name != null && argsStr != null) {
+        try {
+          final parsed = jsonDecode(argsStr);
+          Map<String, dynamic> args;
+          if (parsed is Map<String, dynamic>) {
+            args = parsed;
+          } else if (parsed is String) {
+            args = jsonDecode(parsed) as Map<String, dynamic>? ?? {};
+          } else {
+            args = {};
+          }
+          toolCalls.add(
+            ToolCall(
+              id: 'tool_${DateTime.now().millisecondsSinceEpoch}_${toolCalls.length}',
+              type: 'function',
+              function: ToolCallFunction(
+                name: name,
+                arguments: jsonEncode(args),
+              ),
+            ),
+          );
+        } catch (err) {
+          _log.warning('Failed to parse tool call arguments: $err');
+        }
+      }
+    }
+    return toolCalls;
+  }
 }
 
 class _ToolCallAccumulator {
   String? id;
   String? name;
   String arguments = '';
+
   /// Provider-specific fields to round-trip (e.g. Gemini thought_signature).
   Map<String, dynamic> extras = {};
 }

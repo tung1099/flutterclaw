@@ -116,27 +116,182 @@ class FlutterClawAccessibilityService : AccessibilityService() {
     // ─── Click element ───────────────────────────────────────────────────────
 
     fun clickElement(query: String, by: String): Map<String, Any?> {
-        val rootList = windows?.mapNotNull { it.root } ?: emptyList()
-        val searchRoots = if (rootList.isEmpty()) {
-            val r = rootInActiveWindow ?: return mapOf("success" to false, "message" to "No active window")
-            listOf(r)
-        } else rootList
-
-        for (root in searchRoots) {
-            val nodes = collectNodes(root, query, by)
-            val clickable = nodes.firstOrNull { it.isClickable && it.isEnabled }
-                ?: nodes.firstOrNull { it.isEnabled }
-            if (clickable != null) {
-                val serialized = serializeNode(clickable, 0)
-                val ok = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                clickable.recycle()
-                return mapOf(
-                    "success" to ok,
-                    "element" to serialized,
-                    "message" to if (ok) null else "ACTION_CLICK returned false"
-                )
+        // Get root windows - try multiple approaches
+        var rootList: List<AccessibilityNodeInfo> = emptyList()
+        
+        // Try windows first
+        val windows = this.windows
+        if (windows != null && windows.isNotEmpty()) {
+            rootList = windows.mapNotNull { it.root }.filter { it != null }
+        }
+        
+        // Fallback to rootInActiveWindow
+        if (rootList.isEmpty()) {
+            val activeRoot = this.rootInActiveWindow
+            if (activeRoot != null) {
+                rootList = listOf(activeRoot)
             }
         }
+
+        if (rootList.isEmpty()) {
+            return mapOf("success" to false, "message" to "No active window found")
+        }
+
+        val textSearch = by == "text"
+        val queryLower = query.lowercase()
+        val isSearchQuery = queryLower.contains("tìm") || 
+                           queryLower.contains("search") ||
+                           queryLower.contains("tim") ||
+                           queryLower.contains("search icon") ||
+                           queryLower.contains("search box")
+
+        // Common search button/input patterns - expanded list
+        val searchPatterns = listOf(
+            "tìm", "search", "tim kiem", "search...", "tìm kiếm",
+            "search products", "nhập từ khóa", "tìm sản phẩm",
+            "nhập", "tìm kiếm sản phẩm", "search product"
+        )
+
+        // Helper to find any clickable/searchable element at top of screen
+        fun findTopScreenElement(nodes: List<AccessibilityNodeInfo>): AccessibilityNodeInfo? {
+            // Look for elements in top 25% of screen (search bars are usually at top)
+            val topNodes = nodes.filter { node ->
+                val bounds = android.graphics.Rect()
+                node.getBoundsInScreen(bounds)
+                bounds.top < 400 // Top 400 pixels
+            }
+            // Prefer EditText at top (usually the search input)
+            return topNodes.firstOrNull { 
+                it.className?.contains("EditText") == true && it.isFocusable && it.isEnabled 
+            } ?: topNodes.firstOrNull { 
+                it.isClickable && it.isEnabled 
+            } ?: topNodes.firstOrNull { it.isEnabled }
+        }
+
+        for (root in rootList) {
+            val allNodes = collectNodes(root, null, "all")
+            
+            // Debug: log what nodes we found
+            android.util.Log.d("FlutterClaw", "clickElement: found ${allNodes.size} nodes for query '$query'")
+            
+            val matchedNodes = if (textSearch) {
+                // First: exact text match
+                val exact = allNodes.filter { node ->
+                    node.text?.toString()?.contains(query, ignoreCase = true) == true ||
+                    node.contentDescription?.toString()?.contains(query, ignoreCase = true) == true
+                }
+                if (exact.isNotEmpty()) exact else
+                
+                // Second: partial match (starts with query)
+                allNodes.filter { node ->
+                    val text = node.text?.toString() ?: ""
+                    val desc = node.contentDescription?.toString() ?: ""
+                    val matchLen = minOf(query.length, maxOf(text.length, desc.length))
+                    if (matchLen > 0) {
+                        text.substring(0, minOf(text.length, matchLen)).equals(
+                            query.substring(0, minOf(query.length, matchLen)), ignoreCase = true) ||
+                        desc.substring(0, minOf(desc.length, matchLen)).equals(
+                            query.substring(0, minOf(query.length, matchLen)), ignoreCase = true)
+                    } else false
+                }.ifEmpty {
+                    // Third: for search queries, find by common patterns
+                    if (isSearchQuery) {
+                        allNodes.filter { node ->
+                            val text = node.text?.toString()?.lowercase() ?: ""
+                            val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+                            searchPatterns.any { pattern -> 
+                                text.contains(pattern) || desc.contains(pattern) 
+                            }
+                        }
+                    } else emptyList()
+                }
+            } else {
+                collectNodes(root, query, by)
+            }
+
+            // If still no match but this is a search query, try top screen elements
+            val finalCandidates = if (matchedNodes.isEmpty() && isSearchQuery) {
+                val top = findTopScreenElement(allNodes)
+                if (top != null) listOf(top) else emptyList()
+            } else matchedNodes
+
+            // Select best candidate
+            val clickable = when {
+                isSearchQuery -> {
+                    finalCandidates.firstOrNull { 
+                        it.className?.contains("EditText") == true && it.isFocusable 
+                    } ?: finalCandidates.firstOrNull { it.isClickable && it.isEnabled }
+                        ?: finalCandidates.firstOrNull { it.isEnabled }
+                }
+                else -> {
+                    finalCandidates.firstOrNull { it.isClickable && it.isEnabled }
+                        ?: finalCandidates.firstOrNull { it.isEnabled }
+                }
+            }
+
+            if (clickable != null) {
+                val serialized = serializeNode(clickable, 0)
+                val isEditText = clickable.className?.contains("EditText") == true
+                val bounds = android.graphics.Rect()
+                clickable.getBoundsInScreen(bounds)
+                android.util.Log.d("FlutterClaw", "clickElement: clicking ${serialized["text"] ?: serialized["resourceId"]} at ${bounds.centerX()},${bounds.centerY()}")
+                
+                val ok = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                clickable.recycle()
+
+                // After click, try to focus an EditText field
+                val focusedRoot = this.rootInActiveWindow
+                if (ok && focusedRoot != null) {
+                    val editTexts = collectNodes(focusedRoot, null, "all")
+                        .filter { it.className?.contains("EditText") == true && it.isFocusable }
+                    
+                    for (edit in editTexts) {
+                        if (edit.isEnabled && edit.performAction(AccessibilityNodeInfo.ACTION_FOCUS)) {
+                            edit.recycle()
+                            return buildMap {
+                                put("success", true)
+                                put("element", serialized)
+                                put("readyForInput", true)
+                                put("message", "clicked and focused for input")
+                            }
+                        }
+                        edit.recycle()
+                    }
+                }
+
+                return buildMap {
+                    put("success", ok)
+                    put("element", serialized)
+                    put("message", when {
+                        ok -> "clicked"
+                        else -> "ACTION_CLICK returned false"
+                    })
+                }
+            }
+        }
+        
+        // Last resort: try to find ANY EditText on screen
+        for (root in rootList) {
+            val allNodes = collectNodes(root, null, "all")
+            val editText = allNodes.firstOrNull { 
+                it.className?.contains("EditText") == true && it.isFocusable && it.isEnabled 
+            }
+            if (editText != null) {
+                val serialized = serializeNode(editText, 0)
+                val ok = editText.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                editText.recycle()
+                if (ok) {
+                    return buildMap {
+                        put("success", true)
+                        put("element", serialized)
+                        put("readyForInput", true)
+                        put("message", "auto-clicked first input field")
+                        put("fallback", true)
+                    }
+                }
+            }
+        }
+        
         return mapOf("success" to false, "message" to "Element not found: $query (by=$by)")
     }
 

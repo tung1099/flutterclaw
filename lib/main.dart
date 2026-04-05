@@ -25,10 +25,15 @@ void main() async {
   // ignore: avoid_print
   print('ℹ️ Live Activities: deferred initialization (physical devices only)');
 
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // Initialize Firebase - google-services plugin auto-initializes on Android,
+  // so we must handle the case where it's already initialized
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } on FirebaseException catch (e) {
+    if (e.code != 'duplicate-app') rethrow;
+  }
 
   // Initialize audio service on iOS only. On Android the gateway runs in a
   // foreground service so we don't need audio for keep-alive; media_play
