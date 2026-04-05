@@ -44,6 +44,7 @@ class MainActivity : FlutterFragmentActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
+                android.util.Log.d("UiAutomation", "→ ${call.method} args=${call.arguments}")
                 when (call.method) {
                     "ui_check_permission" -> handleCheckPermission(result)
                     "ui_request_permission" -> handleRequestPermission(result)
@@ -59,7 +60,10 @@ class MainActivity : FlutterFragmentActivity() {
                     "ui_launch_intent" -> handleLaunchIntent(call, result)
                     "ui_list_apps" -> handleListApps(call, result)
                     "ui_app_intents" -> handleAppIntents(call, result)
-                    else -> result.notImplemented()
+                    else -> {
+                        android.util.Log.w("UiAutomation", "unknown method: ${call.method}")
+                        result.notImplemented()
+                    }
                 }
             }
 
@@ -192,8 +196,12 @@ class MainActivity : FlutterFragmentActivity() {
             result.error("INVALID_ARG", "y is required", null); return
         }).toFloat()
 
+        android.util.Log.d("UiAutomation", "→ ui_tap: x=$x, y=$y")
         svc.performTap(x, y) { ok ->
-            Handler(Looper.getMainLooper()).post { result.success(mapOf("success" to ok)) }
+            Handler(Looper.getMainLooper()).post {
+                android.util.Log.d("UiAutomation", "← ui_tap: success=$ok")
+                result.success(mapOf("success" to ok))
+            }
         }
     }
 
@@ -223,7 +231,10 @@ class MainActivity : FlutterFragmentActivity() {
         val text = call.argument<String>("text") ?: run {
             result.error("INVALID_ARG", "text is required", null); return
         }
-        result.success(svc.typeText(text))
+        android.util.Log.d("UiAutomation", "→ ui_type_text: text=$text")
+        val r = svc.typeText(text)
+        android.util.Log.d("UiAutomation", "← ui_type_text: $r")
+        result.success(r)
     }
 
     // ─── Find elements ────────────────────────────────────────────────────────
@@ -232,7 +243,9 @@ class MainActivity : FlutterFragmentActivity() {
         val svc = requireService(result) ?: return
         val query = call.argument<String>("query")
         val by = call.argument<String>("by") ?: "all"
-        result.success(svc.findElements(query, by))
+        val r = svc.findElements(query, by)
+        android.util.Log.d("UiAutomation", "← ui_find_elements: count=${r["count"]}")
+        result.success(r)
     }
 
     // ─── Click element ────────────────────────────────────────────────────────
@@ -243,18 +256,24 @@ class MainActivity : FlutterFragmentActivity() {
             result.error("INVALID_ARG", "query is required", null); return
         }
         val by = call.argument<String>("by") ?: "text"
-        result.success(svc.clickElement(query, by))
+        val r = svc.clickElement(query, by)
+        android.util.Log.d("UiAutomation", "← ui_click_element: $r")
+        result.success(r)
     }
 
     // ─── Screenshot ───────────────────────────────────────────────────────────
 
     private fun handleScreenshot(result: MethodChannel.Result) {
         val svc = FlutterClawAccessibilityService.instance
+        
+        // Log for debugging
+        android.util.Log.d("UiAutomation", "→ ui_screenshot: service=${svc != null}, SDK=${Build.VERSION.SDK_INT}")
+        
         if (svc != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // Hide the overlay so it doesn't appear in the screenshot
             val overlay = OverlayStatusView.getInstance(applicationContext)
             overlay.hideForCapture()
-            // Wait one frame for the compositor to process the visibility change
+            // Wait for compositor
             Handler(Looper.getMainLooper()).postDelayed({
                 try {
                     svc.takeScreenshotApi30 { bytes ->
@@ -266,18 +285,37 @@ class MainActivity : FlutterFragmentActivity() {
                                     "mimeType" to "image/jpeg",
                                 ))
                             } else {
-                                pixelCopyFallback(result)
+                                // Screenshot API failed - try findElements as fallback
+                                android.util.Log.w("MainActivity", "takeScreenshotApi30 returned null, using findElements fallback")
+                                tryFindElementsFallback(result)
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    // Always restore overlay even if screenshot throws
                     overlay.showAfterCapture()
-                    pixelCopyFallback(result)
+                    android.util.Log.e("MainActivity", "takeScreenshotApi30 exception: ${e.message}")
+                    tryFindElementsFallback(result)
                 }
-            }, 50)
+            }, 100)
         } else {
-            pixelCopyFallback(result)
+            // SDK < 30, use findElements fallback
+            tryFindElementsFallback(result)
+        }
+    }
+
+    private fun tryFindElementsFallback(result: MethodChannel.Result) {
+        val svc = FlutterClawAccessibilityService.instance
+        if (svc != null) {
+            val elements = svc.findElements(null, "all")
+            result.success(mapOf(
+                "data" to null,
+                "mimeType" to "text/plain",
+                "fallback" to true,
+                "elements" to elements["elements"],
+                "note" to "Screenshot unavailable (app in background). Using findElements instead."
+            ))
+        } else {
+            result.error("SCREENSHOT_FAILED", "Accessibility service not available", null)
         }
     }
 

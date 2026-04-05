@@ -131,6 +131,7 @@ flutter:
     - assets/skills/memory-manager/SKILL.md
     - assets/skills/file-manager/SKILL.md
     - assets/skills/health-analyst/SKILL.md
+    - assets/skills/weather/SKILL.md
     - assets/audio/silence.mp3
     - assets/shortcuts/
 

@@ -28,10 +28,7 @@ class UiCheckPermissionTool extends Tool {
       'Settings > Accessibility so the user can enable it.';
 
   @override
-  Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {},
-      };
+  Map<String, dynamic> get parameters => {'type': 'object', 'properties': {}};
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
@@ -59,15 +56,13 @@ class UiRequestPermissionTool extends Tool {
       'iOS: not applicable — returns an informational note.';
 
   @override
-  Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {},
-      };
+  Map<String, dynamic> get parameters => {'type': 'object', 'properties': {}};
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
     final r = await _svc.requestPermission();
-    if (r['error'] == true) return ToolResult.error(r['message'] as String? ?? 'Failed');
+    if (r['error'] == true)
+      return ToolResult.error(r['message'] as String? ?? 'Failed');
     return ToolResult.success(jsonEncode(r));
   }
 }
@@ -92,13 +87,13 @@ class UiTapTool extends Tool {
 
   @override
   Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {
-          'x': {'type': 'number', 'description': 'X coordinate in screen pixels.'},
-          'y': {'type': 'number', 'description': 'Y coordinate in screen pixels.'},
-        },
-        'required': ['x', 'y'],
-      };
+    'type': 'object',
+    'properties': {
+      'x': {'type': 'number', 'description': 'X coordinate in screen pixels.'},
+      'y': {'type': 'number', 'description': 'Y coordinate in screen pixels.'},
+    },
+    'required': ['x', 'y'],
+  };
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
@@ -109,7 +104,10 @@ class UiTapTool extends Tool {
 
     _overlay?.showTapFeedback(x, y);
     final r = await _svc.tap(x, y);
-    if (r['error'] == true) return ToolResult.error(r['message'] as String? ?? r['code'] as String? ?? 'Failed');
+    if (r['error'] == true)
+      return ToolResult.error(
+        r['message'] as String? ?? r['code'] as String? ?? 'Failed',
+      );
     return ToolResult.success(jsonEncode(r));
   }
 }
@@ -137,21 +135,21 @@ class UiSwipeTool extends Tool {
 
   @override
   Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {
-          'x1': {'type': 'number', 'description': 'Start X in pixels.'},
-          'y1': {'type': 'number', 'description': 'Start Y in pixels.'},
-          'x2': {'type': 'number', 'description': 'End X in pixels.'},
-          'y2': {'type': 'number', 'description': 'End Y in pixels.'},
-          'duration_ms': {
-            'type': 'integer',
-            'description': 'Swipe duration in milliseconds (50–5000, default 300).',
-            'minimum': 50,
-            'maximum': 5000,
-          },
-        },
-        'required': ['x1', 'y1', 'x2', 'y2'],
-      };
+    'type': 'object',
+    'properties': {
+      'x1': {'type': 'number', 'description': 'Start X in pixels.'},
+      'y1': {'type': 'number', 'description': 'Start Y in pixels.'},
+      'x2': {'type': 'number', 'description': 'End X in pixels.'},
+      'y2': {'type': 'number', 'description': 'End Y in pixels.'},
+      'duration_ms': {
+        'type': 'integer',
+        'description': 'Swipe duration in milliseconds (50–5000, default 300).',
+        'minimum': 50,
+        'maximum': 5000,
+      },
+    },
+    'required': ['x1', 'y1', 'x2', 'y2'],
+  };
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
@@ -167,7 +165,10 @@ class UiSwipeTool extends Tool {
 
     _overlay?.showSwipeFeedback(x1, y1, x2, y2);
     final r = await _svc.swipe(x1, y1, x2, y2, durationMs: durationMs);
-    if (r['error'] == true) return ToolResult.error(r['message'] as String? ?? r['code'] as String? ?? 'Failed');
+    if (r['error'] == true)
+      return ToolResult.error(
+        r['message'] as String? ?? r['code'] as String? ?? 'Failed',
+      );
     return ToolResult.success(jsonEncode(r));
   }
 }
@@ -192,24 +193,28 @@ class UiTypeTextTool extends Tool {
 
   @override
   Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {
-          'text': {
-            'type': 'string',
-            'description': 'The text to type into the focused input field.',
-          },
-        },
-        'required': ['text'],
-      };
+    'type': 'object',
+    'properties': {
+      'text': {
+        'type': 'string',
+        'description': 'The text to type into the focused input field.',
+      },
+    },
+    'required': ['text'],
+  };
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
     final text = args['text'] as String?;
-    if (text == null || text.isEmpty) return ToolResult.error('text is required');
+    if (text == null || text.isEmpty)
+      return ToolResult.error('text is required');
 
     _overlay?.showTypeFeedback(text);
     final r = await _svc.typeText(text);
-    if (r['error'] == true) return ToolResult.error(r['message'] as String? ?? r['code'] as String? ?? 'Failed');
+    if (r['error'] == true)
+      return ToolResult.error(
+        r['message'] as String? ?? r['code'] as String? ?? 'Failed',
+      );
     if (r['success'] == false) {
       return ToolResult.error(r['message'] as String? ?? 'Type text failed');
     }
@@ -243,19 +248,19 @@ class UiFindElementsTool extends Tool {
 
   @override
   Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {
-          'query': {
-            'type': 'string',
-            'description': 'Optional search string to filter elements.',
-          },
-          'by': {
-            'type': 'string',
-            'enum': ['all', 'text', 'id', 'description', 'class'],
-            'description': 'How to match the query (default: "all").',
-          },
-        },
-      };
+    'type': 'object',
+    'properties': {
+      'query': {
+        'type': 'string',
+        'description': 'Optional search string to filter elements.',
+      },
+      'by': {
+        'type': 'string',
+        'enum': ['all', 'text', 'id', 'description', 'class'],
+        'description': 'How to match the query (default: "all").',
+      },
+    },
+  };
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
@@ -263,7 +268,10 @@ class UiFindElementsTool extends Tool {
     final by = (args['by'] as String?) ?? 'all';
 
     final r = await _svc.findElements(query: query, by: by);
-    if (r['error'] == true) return ToolResult.error(r['message'] as String? ?? r['code'] as String? ?? 'Failed');
+    if (r['error'] == true)
+      return ToolResult.error(
+        r['message'] as String? ?? r['code'] as String? ?? 'Failed',
+      );
     return ToolResult.success(jsonEncode(r));
   }
 }
@@ -290,31 +298,38 @@ class UiClickElementTool extends Tool {
 
   @override
   Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {
-          'query': {
-            'type': 'string',
-            'description': 'Text, resource ID, or content description to search for.',
-          },
-          'by': {
-            'type': 'string',
-            'enum': ['text', 'id', 'description', 'class'],
-            'description': 'How to identify the element (default: "text").',
-          },
-        },
-        'required': ['query'],
-      };
+    'type': 'object',
+    'properties': {
+      'query': {
+        'type': 'string',
+        'description':
+            'Text, resource ID, or content description to search for.',
+      },
+      'by': {
+        'type': 'string',
+        'enum': ['text', 'id', 'description', 'class'],
+        'description': 'How to identify the element (default: "text").',
+      },
+    },
+    'required': ['query'],
+  };
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
     final query = args['query'] as String?;
-    if (query == null || query.isEmpty) return ToolResult.error('query is required');
+    if (query == null || query.isEmpty)
+      return ToolResult.error('query is required');
     final by = (args['by'] as String?) ?? 'text';
 
     final r = await _svc.clickElement(query, by);
-    if (r['error'] == true) return ToolResult.error(r['message'] as String? ?? r['code'] as String? ?? 'Failed');
+    if (r['error'] == true)
+      return ToolResult.error(
+        r['message'] as String? ?? r['code'] as String? ?? 'Failed',
+      );
     if (r['success'] == false) {
-      return ToolResult.error(r['message'] as String? ?? 'Element not found or click failed');
+      return ToolResult.error(
+        r['message'] as String? ?? 'Element not found or click failed',
+      );
     }
     // Show tap feedback at the clicked element's center
     final cx = (r['centerX'] as num?)?.toDouble();
@@ -343,10 +358,7 @@ class UiScreenshotTool extends Tool {
       'iOS: captures the FlutterClaw app surface only.';
 
   @override
-  Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {},
-      };
+  Map<String, dynamic> get parameters => {'type': 'object', 'properties': {}};
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
@@ -376,10 +388,40 @@ class UiScreenshotTool extends Tool {
       summary.writeln('- "$label" $tag at ($cx, $cy) [$cls]');
     }
 
-    if (r['error'] == true) {
-      // Screenshot failed but we still have elements
-      return ToolResult.success(
-        'Screenshot failed: ${r['message'] ?? 'unknown error'}\n\n${summary.toString().trim()}',
+    if (r['error'] == true || r['data'] == null) {
+      // Screenshot failed but we still have elements - check for fallback
+      final fallback = r['fallback'] == true;
+      final note = r['note'] as String? ?? 'Screenshot unavailable';
+      final elementsData = r['elements'];
+
+      if (elementsData != null) {
+        // Build summary from fallback elements
+        final elemList = elementsData as List<dynamic>? ?? [];
+        final summary = StringBuffer();
+        if (fallback) {
+          summary.writeln('⚠️ Screenshot unavailable. Using UI elements:\n');
+        }
+        for (final e in elemList) {
+          if (e is! Map<String, dynamic>) continue;
+          final text = e['text'] as String?;
+          final desc = e['contentDescription'] as String?;
+          final cls = (e['className'] as String? ?? '').split('.').last;
+          final clickable = e['isClickable'] == true;
+          final cx = e['centerX'];
+          final cy = e['centerY'];
+          final label = text ?? desc ?? e['resourceId'] as String? ?? cls;
+          if (label.isEmpty) continue;
+          final tag = clickable ? '[clickable]' : '';
+          summary.writeln('- "$label" $tag at ($cx, $cy) [$cls]');
+        }
+        return ToolResult.success(
+          fallback
+              ? '⚠️ Screenshot unavailable (app in background).\n\n${summary.toString().trim()}'
+              : summary.toString().trim(),
+        );
+      }
+      return ToolResult.error(
+        'Screenshot failed: ${r['message'] ?? 'unknown error'}',
       );
     }
 
@@ -417,24 +459,28 @@ class UiGlobalActionTool extends Tool {
 
   @override
   Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {
-          'action': {
-            'type': 'string',
-            'enum': ['back', 'home', 'recents', 'notifications', 'quick_settings'],
-            'description': 'The global action to perform.',
-          },
-        },
-        'required': ['action'],
-      };
+    'type': 'object',
+    'properties': {
+      'action': {
+        'type': 'string',
+        'enum': ['back', 'home', 'recents', 'notifications', 'quick_settings'],
+        'description': 'The global action to perform.',
+      },
+    },
+    'required': ['action'],
+  };
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
     final action = args['action'] as String?;
-    if (action == null || action.isEmpty) return ToolResult.error('action is required');
+    if (action == null || action.isEmpty)
+      return ToolResult.error('action is required');
 
     final r = await _svc.globalAction(action);
-    if (r['error'] == true) return ToolResult.error(r['message'] as String? ?? r['code'] as String? ?? 'Failed');
+    if (r['error'] == true)
+      return ToolResult.error(
+        r['message'] as String? ?? r['code'] as String? ?? 'Failed',
+      );
     return ToolResult.success(jsonEncode(r));
   }
 }
@@ -469,18 +515,19 @@ class UiLaunchAppTool extends Tool {
 
   @override
   Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {
-          'package': {
-            'type': 'string',
-            'description': 'Exact package name (e.g. "com.android.settings").',
-          },
-          'search': {
-            'type': 'string',
-            'description': 'Search by app name/label (e.g. "Chrome"). Opens the first match.',
-          },
-        },
-      };
+    'type': 'object',
+    'properties': {
+      'package': {
+        'type': 'string',
+        'description': 'Exact package name (e.g. "com.android.settings").',
+      },
+      'search': {
+        'type': 'string',
+        'description':
+            'Search by app name/label (e.g. "Chrome"). Opens the first match.',
+      },
+    },
+  };
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
@@ -490,8 +537,10 @@ class UiLaunchAppTool extends Tool {
       return ToolResult.error('Either "package" or "search" is required');
     }
     final r = await _svc.launchApp(package_: pkg, search: search);
-    if (r['error'] == true) return ToolResult.error(r['message'] as String? ?? 'Failed');
-    if (r['success'] == false) return ToolResult.error(r['message'] as String? ?? 'App not found');
+    if (r['error'] == true)
+      return ToolResult.error(r['message'] as String? ?? 'Failed');
+    if (r['success'] == false)
+      return ToolResult.error(r['message'] as String? ?? 'App not found');
     return ToolResult.success(jsonEncode(r));
   }
 }
@@ -535,30 +584,24 @@ class UiLaunchIntentTool extends Tool {
 
   @override
   Map<String, dynamic> get parameters => {
+    'type': 'object',
+    'properties': {
+      'action': {'type': 'string', 'description': 'Intent action string.'},
+      'uri': {'type': 'string', 'description': 'Data URI for the intent.'},
+      'type': {
+        'type': 'string',
+        'description': 'MIME type (e.g. "text/plain", "image/*").',
+      },
+      'package': {
+        'type': 'string',
+        'description': 'Target package to restrict the intent to.',
+      },
+      'extras': {
         'type': 'object',
-        'properties': {
-          'action': {
-            'type': 'string',
-            'description': 'Intent action string.',
-          },
-          'uri': {
-            'type': 'string',
-            'description': 'Data URI for the intent.',
-          },
-          'type': {
-            'type': 'string',
-            'description': 'MIME type (e.g. "text/plain", "image/*").',
-          },
-          'package': {
-            'type': 'string',
-            'description': 'Target package to restrict the intent to.',
-          },
-          'extras': {
-            'type': 'object',
-            'description': 'Key-value map of intent extras.',
-          },
-        },
-      };
+        'description': 'Key-value map of intent extras.',
+      },
+    },
+  };
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
@@ -574,8 +617,10 @@ class UiLaunchIntentTool extends Tool {
       package_: args['package'] as String?,
       extras: (args['extras'] as Map<String, dynamic>?),
     );
-    if (r['error'] == true) return ToolResult.error(r['message'] as String? ?? 'Failed');
-    if (r['success'] == false) return ToolResult.error(r['message'] as String? ?? 'Intent failed');
+    if (r['error'] == true)
+      return ToolResult.error(r['message'] as String? ?? 'Failed');
+    if (r['success'] == false)
+      return ToolResult.error(r['message'] as String? ?? 'Intent failed');
     return ToolResult.success(jsonEncode(r));
   }
 }
@@ -600,25 +645,29 @@ class UiListAppsTool extends Tool {
 
   @override
   Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {
-          'search': {
-            'type': 'string',
-            'description': 'Filter apps by name or package (case-insensitive).',
-          },
-          'launchable_only': {
-            'type': 'boolean',
-            'description': 'Only show apps with a launcher icon (default true).',
-          },
-        },
-      };
+    'type': 'object',
+    'properties': {
+      'search': {
+        'type': 'string',
+        'description': 'Filter apps by name or package (case-insensitive).',
+      },
+      'launchable_only': {
+        'type': 'boolean',
+        'description': 'Only show apps with a launcher icon (default true).',
+      },
+    },
+  };
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
     final search = args['search'] as String?;
     final launchableOnly = args['launchable_only'] as bool? ?? true;
-    final r = await _svc.listApps(launchableOnly: launchableOnly, search: search);
-    if (r['error'] == true) return ToolResult.error(r['message'] as String? ?? 'Failed');
+    final r = await _svc.listApps(
+      launchableOnly: launchableOnly,
+      search: search,
+    );
+    if (r['error'] == true)
+      return ToolResult.error(r['message'] as String? ?? 'Failed');
     return ToolResult.success(jsonEncode(r));
   }
 }
@@ -646,22 +695,25 @@ class UiAppIntentsTool extends Tool {
 
   @override
   Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {
-          'package': {
-            'type': 'string',
-            'description': 'The package name of the app (e.g. "com.android.chrome").',
-          },
-        },
-        'required': ['package'],
-      };
+    'type': 'object',
+    'properties': {
+      'package': {
+        'type': 'string',
+        'description':
+            'The package name of the app (e.g. "com.android.chrome").',
+      },
+    },
+    'required': ['package'],
+  };
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
     final pkg = args['package'] as String?;
-    if (pkg == null || pkg.isEmpty) return ToolResult.error('package is required');
+    if (pkg == null || pkg.isEmpty)
+      return ToolResult.error('package is required');
     final r = await _svc.appIntents(pkg);
-    if (r['error'] == true) return ToolResult.error(r['message'] as String? ?? 'Failed');
+    if (r['error'] == true)
+      return ToolResult.error(r['message'] as String? ?? 'Failed');
     return ToolResult.success(jsonEncode(r));
   }
 }
@@ -700,70 +752,73 @@ class UiBatchActionsTool extends Tool {
 
   @override
   Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {
-          'actions': {
-            'type': 'array',
-            'description': 'Array of action objects to execute in order.',
-            'items': {
-              'type': 'object',
-              'properties': {
-                'action': {
-                  'type': 'string',
-                  'enum': [
-                    'tap',
-                    'swipe',
-                    'click',
-                    'type',
-                    'global',
-                    'wait',
-                    'launch_intent',
-                    'launch_app',
-                  ],
-                  'description': 'The action type.',
-                },
-                'intent_action': {
-                  'type': 'string',
-                  'description':
-                      'For launch_intent: Android intent action (e.g. android.intent.action.VIEW).',
-                },
-                'uri': {'type': 'string'},
-                'type': {'type': 'string'},
-                'package': {'type': 'string'},
-                'extras': {'type': 'object'},
-                'search': {
-                  'type': 'string',
-                  'description': 'For launch_app: find app by label.',
-                },
-                'x': {'type': 'number'},
-                'y': {'type': 'number'},
-                'x1': {'type': 'number'},
-                'y1': {'type': 'number'},
-                'x2': {'type': 'number'},
-                'y2': {'type': 'number'},
-                'duration_ms': {'type': 'integer'},
-                'query': {'type': 'string'},
-                'by': {'type': 'string'},
-                'text': {'type': 'string'},
-                'name': {'type': 'string'},
-                'ms': {'type': 'integer'},
-              },
-              'required': ['action'],
+    'type': 'object',
+    'properties': {
+      'actions': {
+        'type': 'array',
+        'description': 'Array of action objects to execute in order.',
+        'items': {
+          'type': 'object',
+          'properties': {
+            'action': {
+              'type': 'string',
+              'enum': [
+                'tap',
+                'swipe',
+                'click',
+                'type',
+                'global',
+                'wait',
+                'launch_intent',
+                'launch_app',
+              ],
+              'description': 'The action type.',
             },
+            'intent_action': {
+              'type': 'string',
+              'description':
+                  'For launch_intent: Android intent action (e.g. android.intent.action.VIEW).',
+            },
+            'uri': {'type': 'string'},
+            'type': {'type': 'string'},
+            'package': {'type': 'string'},
+            'extras': {'type': 'object'},
+            'search': {
+              'type': 'string',
+              'description': 'For launch_app: find app by label.',
+            },
+            'x': {'type': 'number'},
+            'y': {'type': 'number'},
+            'x1': {'type': 'number'},
+            'y1': {'type': 'number'},
+            'x2': {'type': 'number'},
+            'y2': {'type': 'number'},
+            'duration_ms': {'type': 'integer'},
+            'query': {'type': 'string'},
+            'by': {'type': 'string'},
+            'text': {'type': 'string'},
+            'name': {'type': 'string'},
+            'ms': {'type': 'integer'},
           },
-          'delay_ms': {
-            'type': 'integer',
-            'description': 'Pause between actions in ms (default 100). Set 0 for max speed.',
-          },
+          'required': ['action'],
         },
-        'required': ['actions'],
-      };
+      },
+      'delay_ms': {
+        'type': 'integer',
+        'description':
+            'Pause between actions in ms (default 100). Set 0 for max speed.',
+      },
+    },
+    'required': ['actions'],
+  };
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
     final actions = args['actions'] as List<dynamic>?;
     if (actions == null || actions.isEmpty) {
-      return ToolResult.error('actions array is required and must not be empty');
+      return ToolResult.error(
+        'actions array is required and must not be empty',
+      );
     }
     final delayMs = (args['delay_ms'] as num?)?.toInt() ?? 100;
     final delay = Duration(milliseconds: delayMs);
@@ -929,46 +984,46 @@ class UiAskUserTool extends Tool {
 
   @override
   Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {
-          'question': {
-            'type': 'string',
-            'description':
-                'The question to show the user. Keep it short and clear.',
-          },
-          'options': {
-            'type': 'array',
-            'description':
-                'Button options for the user to choose from (1-4 options). '
-                    'Required when input_type is "buttons". Each option has a '
-                    '"label" (display text) and "value" (returned to you).',
-            'items': {
-              'type': 'object',
-              'properties': {
-                'label': {
-                  'type': 'string',
-                  'description': 'Button text shown to user',
-                },
-                'value': {
-                  'type': 'string',
-                  'description': 'Value returned when tapped',
-                },
-              },
-              'required': ['label', 'value'],
+    'type': 'object',
+    'properties': {
+      'question': {
+        'type': 'string',
+        'description':
+            'The question to show the user. Keep it short and clear.',
+      },
+      'options': {
+        'type': 'array',
+        'description':
+            'Button options for the user to choose from (1-4 options). '
+            'Required when input_type is "buttons". Each option has a '
+            '"label" (display text) and "value" (returned to you).',
+        'items': {
+          'type': 'object',
+          'properties': {
+            'label': {
+              'type': 'string',
+              'description': 'Button text shown to user',
             },
-            'minItems': 1,
-            'maxItems': 4,
+            'value': {
+              'type': 'string',
+              'description': 'Value returned when tapped',
+            },
           },
-          'input_type': {
-            'type': 'string',
-            'enum': ['buttons', 'text'],
-            'description':
-                'Type of input: "buttons" for multiple-choice (default), '
-                    '"text" for free-form text input (passwords, names, etc.).',
-          },
+          'required': ['label', 'value'],
         },
-        'required': ['question'],
-      };
+        'minItems': 1,
+        'maxItems': 4,
+      },
+      'input_type': {
+        'type': 'string',
+        'enum': ['buttons', 'text'],
+        'description':
+            'Type of input: "buttons" for multiple-choice (default), '
+            '"text" for free-form text input (passwords, names, etc.).',
+      },
+    },
+    'required': ['question'],
+  };
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
@@ -984,7 +1039,8 @@ class UiAskUserTool extends Tool {
       final options = args['options'] as List<dynamic>?;
       if (options == null || options.isEmpty) {
         return ToolResult.error(
-            'options are required when input_type is "buttons"');
+          'options are required when input_type is "buttons"',
+        );
       }
 
       final buttons = options.map((o) {
@@ -1000,11 +1056,13 @@ class UiAskUserTool extends Tool {
         buttons: buttons,
       );
 
-      return ToolResult.success(jsonEncode({
-        'user_response': response,
-        'was_timeout': response == 'timeout',
-        'was_dismissed': response == 'dismissed',
-      }));
+      return ToolResult.success(
+        jsonEncode({
+          'user_response': response,
+          'was_timeout': response == 'timeout',
+          'was_dismissed': response == 'dismissed',
+        }),
+      );
     } else {
       // Text input mode — hint from first option label if provided
       final options = args['options'] as List<dynamic>?;
@@ -1025,11 +1083,13 @@ class UiAskUserTool extends Tool {
         textInput: true,
       );
 
-      return ToolResult.success(jsonEncode({
-        'user_response': response,
-        'was_timeout': response == 'timeout',
-        'was_dismissed': response == 'dismissed',
-      }));
+      return ToolResult.success(
+        jsonEncode({
+          'user_response': response,
+          'was_timeout': response == 'timeout',
+          'was_dismissed': response == 'dismissed',
+        }),
+      );
     }
   }
 }
@@ -1055,17 +1115,17 @@ class UiStatusTool extends Tool {
 
   @override
   Map<String, dynamic> get parameters => {
-        'type': 'object',
-        'properties': {
-          'text': {
-            'type': 'string',
-            'description':
-                'Short status message to display (max ~50 chars). '
-                'Write in the user\'s language.',
-          },
-        },
-        'required': ['text'],
-      };
+    'type': 'object',
+    'properties': {
+      'text': {
+        'type': 'string',
+        'description':
+            'Short status message to display (max ~50 chars). '
+            'Write in the user\'s language.',
+      },
+    },
+    'required': ['text'],
+  };
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {

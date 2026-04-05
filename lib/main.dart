@@ -7,11 +7,20 @@ import 'package:flutterclaw/app.dart';
 import 'package:flutterclaw/firebase_options.dart';
 import 'package:flutterclaw/services/audio_player_service.dart';
 import 'package:flutterclaw/services/background_service.dart';
+import 'package:flutterclaw/services/file_logger.dart';
 import 'package:flutterclaw/services/live_activity_service.dart';
 import 'package:logging/logging.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Development: write to project directory (only works on iOS simulator/Mac)
+  // On Android device, it will fallback to app documents directory
+  const logPath = '/Users/dtroyal/flutterclaw/llm/log';
+  LlmLogger.setCustomPath(logPath);
+
+  // Initialize LLM logger (will fallback on Android device)
+  await LlmLogger.init();
 
   Logger.root.level = Level.INFO;
   Logger.root.onRecord.listen((record) {

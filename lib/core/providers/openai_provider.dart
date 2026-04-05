@@ -11,6 +11,7 @@ import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
 
 import 'provider_interface.dart';
+import '../../services/file_logger.dart';
 
 final _log = Logger('OpenAiProvider');
 
@@ -684,6 +685,15 @@ class OpenAiProvider implements LlmProvider {
     final usageJson = json['usage'] as Map<String, dynamic>?;
     final usage = usageJson != null ? UsageInfo.fromJson(usageJson) : null;
 
+    // Log response to llm.log
+    final contentLen = content?.length ?? 0;
+    final contentPreview = contentLen > 100
+        ? '${content!.substring(0, 100)}...'
+        : (content ?? '');
+    LlmLogger.response(
+      'finishReason=$finishReason, content=$contentPreview, toolCalls=${toolCalls?.length ?? 0}, usage=$usage',
+    );
+
     return LlmResponse(
       content: content,
       toolCalls: toolCalls,
@@ -706,10 +716,10 @@ class OpenAiProvider implements LlmProvider {
       final model = body['model'];
       final stream = body['stream'];
       final toolCount = (body['tools'] as List<dynamic>?)?.length ?? 0;
-      _log.info(
-        '$operation: POST $url | model=$model | stream=$stream | '
-        'messages=${msgs?.length ?? 0} | tools=$toolCount | approxBodyBytes=$bytes | apiBase=$apiBase',
-      );
+      final logMsg =
+          '$operation: POST $url | model=$model | stream=$stream | messages=${msgs?.length ?? 0} | tools=$toolCount | approxBodyBytes=$bytes | apiBase=$apiBase';
+      _log.info(logMsg);
+      LlmLogger.request(logMsg);
     } catch (err, st) {
       _log.warning('Failed to log request summary: $err', err, st);
     }

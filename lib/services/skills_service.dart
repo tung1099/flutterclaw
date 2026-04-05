@@ -29,14 +29,14 @@ class SkillCompatibilityResult {
   });
 
   factory SkillCompatibilityResult.unknown() => const SkillCompatibilityResult(
-        verdict: SkillCompatibility.compatible,
-        reason: 'Could not check compatibility — installing as-is.',
-      );
+    verdict: SkillCompatibility.compatible,
+    reason: 'Could not check compatibility — installing as-is.',
+  );
 }
 
 /// Callback type for making LLM calls from SkillsService.
-typedef SkillLlmCall = Future<String?> Function(
-    String systemPrompt, String userPrompt);
+typedef SkillLlmCall =
+    Future<String?> Function(String systemPrompt, String userPrompt);
 
 final _log = Logger('flutterclaw.skills');
 
@@ -62,14 +62,14 @@ class Skill {
   });
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        'description': description,
-        'location': location,
-        if (homepage != null) 'homepage': homepage,
-        if (emoji != null) 'emoji': emoji,
-        'userInvocable': userInvocable,
-        'enabled': enabled,
-      };
+    'name': name,
+    'description': description,
+    'location': location,
+    if (homepage != null) 'homepage': homepage,
+    if (emoji != null) 'emoji': emoji,
+    'userInvocable': userInvocable,
+    'enabled': enabled,
+  };
 }
 
 class ClawHubSkill {
@@ -99,11 +99,7 @@ class ClawHubAuthResult {
   final String? token;
   final String? error;
 
-  const ClawHubAuthResult({
-    required this.success,
-    this.token,
-    this.error,
-  });
+  const ClawHubAuthResult({required this.success, this.token, this.error});
 }
 
 class SkillsService {
@@ -119,8 +115,7 @@ class SkillsService {
 
   bool get isClawHubAuthenticated => _clawHubToken != null;
 
-  List<Skill> get enabledSkills =>
-      _skills.where((s) => s.enabled).toList();
+  List<Skill> get enabledSkills => _skills.where((s) => s.enabled).toList();
 
   /// Load all skills from workspace and bundled assets.
   Future<void> loadSkills() async {
@@ -135,7 +130,9 @@ class SkillsService {
     // 3. Load ClawHub token from secure storage
     await _loadClawHubToken();
 
-    _log.info('Loaded ${_skills.length} skills');
+    _log.info(
+      'Loaded ${_skills.length} skills: ${_skills.map((s) => s.name).join(", ")}',
+    );
   }
 
   /// Load ClawHub authentication token from secure storage.
@@ -152,9 +149,7 @@ class SkillsService {
 
   /// Authenticate with ClawHub using an API token.
   /// Tokens can be generated at https://clawhub.ai after logging in with GitHub.
-  Future<ClawHubAuthResult> authenticateClawHub({
-    required String token,
-  }) async {
+  Future<ClawHubAuthResult> authenticateClawHub({required String token}) async {
     try {
       if (token.trim().isEmpty) {
         return ClawHubAuthResult(
@@ -176,10 +171,7 @@ class SkillsService {
       );
 
       if (verifyResponse.statusCode != 200) {
-        return ClawHubAuthResult(
-          success: false,
-          error: 'Invalid API token',
-        );
+        return ClawHubAuthResult(success: false, error: 'Invalid API token');
       }
 
       // Save token to secure storage
@@ -229,12 +221,14 @@ class SkillsService {
       'file-manager',
       'headless-browser',
       'health-analyst',
+      'weather',
     ];
 
     for (final name in bundledSkills) {
       try {
-        final content =
-            await rootBundle.loadString('assets/skills/$name/SKILL.md');
+        final content = await rootBundle.loadString(
+          'assets/skills/$name/SKILL.md',
+        );
         final skill = _parseSkillMd(content, name, 'bundled');
         if (skill != null) {
           // Workspace skill with same name takes precedence
@@ -300,7 +294,7 @@ class SkillsService {
           // Remove surrounding quotes from value if present
           if (value.length >= 2 &&
               ((value.startsWith('"') && value.endsWith('"')) ||
-               (value.startsWith("'") && value.endsWith("'")))) {
+                  (value.startsWith("'") && value.endsWith("'")))) {
             value = value.substring(1, value.length - 1);
           }
 
@@ -334,14 +328,26 @@ class SkillsService {
   /// Format eligible skills for system prompt injection.
   String getSkillsPrompt() {
     final eligible = enabledSkills;
-    if (eligible.isEmpty) return '';
+    if (eligible.isEmpty) {
+      _log.info('getSkillsPrompt: no skills enabled');
+      return '';
+    }
+
+    _log.info(
+      'getSkillsPrompt: ${eligible.length} skills - ${eligible.map((s) => s.name).join(", ")}',
+    );
 
     final buf = StringBuffer();
     buf.writeln('# Skills\n');
-    buf.writeln('The following skills are available. Read and follow their instructions when relevant.\n');
+    buf.writeln(
+      'The following skills are available. Read and follow their instructions when relevant.\n',
+    );
 
     for (final skill in eligible) {
-      buf.writeln('<skill name="${skill.name}" description="${skill.description}">');
+      _log.info('Including skill: ${skill.name}');
+      buf.writeln(
+        '<skill name="${skill.name}" description="${skill.description}">',
+      );
       buf.writeln(skill.instructions);
       buf.writeln('</skill>\n');
     }
@@ -352,10 +358,12 @@ class SkillsService {
   /// Check if a skill's content is compatible with mobile (iOS/Android).
   /// Uses the agent's default LLM to analyze the SKILL.md content.
   Future<SkillCompatibilityResult> checkSkillCompatibility(
-      String skillContent) async {
+    String skillContent,
+  ) async {
     if (llmCall == null) return SkillCompatibilityResult.unknown();
 
-    const systemPrompt = '''You are a compatibility analyzer for AI agent skills (prompt-based plugins).
+    const systemPrompt =
+        '''You are a compatibility analyzer for AI agent skills (prompt-based plugins).
 These skills run inside FlutterClaw, a mobile AI assistant app for iOS and Android built with Flutter/Dart.
 Skills are prompt instructions (SKILL.md files) that tell the AI agent how to behave or what tools to use.
 
@@ -457,7 +465,9 @@ Respond with ONLY a JSON object (no markdown, no code fences):
       }
 
       if (skillResponse.statusCode != 200) {
-        _log.warning('ClawHub skill not found: $slug (${skillResponse.statusCode})');
+        _log.warning(
+          'ClawHub skill not found: $slug (${skillResponse.statusCode})',
+        );
         return false;
       }
 
@@ -549,7 +559,9 @@ Respond with ONLY a JSON object (no markdown, no code fences):
       );
 
       if (response.statusCode != 200) {
-        _log.warning('Failed to get skill details: $slug (${response.statusCode})');
+        _log.warning(
+          'Failed to get skill details: $slug (${response.statusCode})',
+        );
         return null;
       }
 
@@ -566,21 +578,23 @@ Respond with ONLY a JSON object (no markdown, no code fences):
         return 0;
       }
 
-      final author = data['author'] as String? ??
-                    data['owner'] as String? ??
-                    data['username'] as String?;
+      final author =
+          data['author'] as String? ??
+          data['owner'] as String? ??
+          data['username'] as String?;
 
       final downloads = parseNumber(
-        data['downloads'] ?? data['download_count'] ?? data['installs']
+        data['downloads'] ?? data['download_count'] ?? data['installs'],
       );
 
       final stars = parseNumber(
-        data['stars'] ?? data['star_count'] ?? data['likes']
+        data['stars'] ?? data['star_count'] ?? data['likes'],
       );
 
       return ClawHubSkill(
         name: data['slug'] as String? ?? slug,
-        description: data['summary'] as String? ?? data['description'] as String? ?? '',
+        description:
+            data['summary'] as String? ?? data['description'] as String? ?? '',
         author: author,
         emoji: data['emoji'] as String?,
         version: data['version'] as String?,
@@ -625,49 +639,62 @@ Respond with ONLY a JSON object (no markdown, no code fences):
 
       // Log the raw response to understand structure
       _log.info('ClawHub search response keys: ${data.keys.join(", ")}');
-      _log.info('First result sample: ${results.isNotEmpty ? results[0] : "empty"}');
+      _log.info(
+        'First result sample: ${results.isNotEmpty ? results[0] : "empty"}',
+      );
 
-      return results.map((e) {
-        final map = e as Map<String, dynamic>;
+      return results
+          .map((e) {
+            final map = e as Map<String, dynamic>;
 
-        // Debug log to see what fields we're getting
-        _log.info('ClawHub skill: ${map['slug']} - Fields: ${map.keys.join(", ")}');
-        _log.info('ClawHub skill data: $map');
+            // Debug log to see what fields we're getting
+            _log.info(
+              'ClawHub skill: ${map['slug']} - Fields: ${map.keys.join(", ")}',
+            );
+            _log.info('ClawHub skill data: $map');
 
-        // Try multiple field names that the API might use
-        final author = map['author'] as String? ??
-                      map['owner'] as String? ??
-                      map['username'] as String?;
+            // Try multiple field names that the API might use
+            final author =
+                map['author'] as String? ??
+                map['owner'] as String? ??
+                map['username'] as String?;
 
-        // Parse numbers correctly - they might come as strings or ints
-        int parseNumber(dynamic value) {
-          if (value == null) return 0;
-          if (value is int) return value;
-          if (value is String) return int.tryParse(value) ?? 0;
-          return 0;
-        }
+            // Parse numbers correctly - they might come as strings or ints
+            int parseNumber(dynamic value) {
+              if (value == null) return 0;
+              if (value is int) return value;
+              if (value is String) return int.tryParse(value) ?? 0;
+              return 0;
+            }
 
-        final downloads = parseNumber(
-          map['downloads'] ?? map['download_count'] ?? map['installs']
-        );
+            final downloads = parseNumber(
+              map['downloads'] ?? map['download_count'] ?? map['installs'],
+            );
 
-        final stars = parseNumber(
-          map['stars'] ?? map['star_count'] ?? map['likes']
-        );
+            final stars = parseNumber(
+              map['stars'] ?? map['star_count'] ?? map['likes'],
+            );
 
-        _log.info('Parsed - author: $author, downloads: $downloads, stars: $stars');
+            _log.info(
+              'Parsed - author: $author, downloads: $downloads, stars: $stars',
+            );
 
-        return ClawHubSkill(
-          name: map['slug'] as String? ?? '',
-          description: map['summary'] as String? ?? map['description'] as String? ?? '',
-          author: author,
-          emoji: map['emoji'] as String?,
-          version: map['version'] as String?,
-          downloads: downloads,
-          stars: stars,
-          suspicious: map['suspicious'] as bool? ?? false,
-        );
-      }).where((skill) => !skill.suspicious).toList(); // Filter suspicious skills
+            return ClawHubSkill(
+              name: map['slug'] as String? ?? '',
+              description:
+                  map['summary'] as String? ??
+                  map['description'] as String? ??
+                  '',
+              author: author,
+              emoji: map['emoji'] as String?,
+              version: map['version'] as String?,
+              downloads: downloads,
+              stars: stars,
+              suspicious: map['suspicious'] as bool? ?? false,
+            );
+          })
+          .where((skill) => !skill.suspicious)
+          .toList(); // Filter suspicious skills
     } catch (e) {
       _log.warning('ClawHub search failed: $e');
       return [];

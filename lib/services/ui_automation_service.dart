@@ -5,10 +5,20 @@
 /// returned as `{'error': true, 'code': ..., 'message': ...}`.
 library;
 
+import 'dart:developer' as developer;
 import 'package:flutter/services.dart';
 
 class UiAutomationService {
   static const _channel = MethodChannel('ai.flutterclaw/ui_automation');
+  static const _tag = 'UiAutomation';
+
+  void _log(String method, [Map<String, dynamic>? args]) {
+    developer.log('→ $method ${args ?? ''}', name: _tag);
+  }
+
+  void _logResult(String method, Map<String, dynamic> result) {
+    developer.log('← $method: $result', name: _tag);
+  }
 
   /// Check whether the Accessibility Service is enabled (Android) or return
   /// {granted: false, platform: "ios"} on iOS.
@@ -31,14 +41,13 @@ class UiAutomationService {
     double x2,
     double y2, {
     int durationMs = 300,
-  }) =>
-      _invoke('ui_swipe', {
-        'x1': x1,
-        'y1': y1,
-        'x2': x2,
-        'y2': y2,
-        'duration_ms': durationMs,
-      });
+  }) => _invoke('ui_swipe', {
+    'x1': x1,
+    'y1': y1,
+    'x2': x2,
+    'y2': y2,
+    'duration_ms': durationMs,
+  });
 
   /// Type text into the currently focused input field.
   Future<Map<String, dynamic>> typeText(String text) =>
@@ -49,8 +58,7 @@ class UiAutomationService {
   Future<Map<String, dynamic>> findElements({
     String? query,
     String by = 'all',
-  }) =>
-      _invoke('ui_find_elements', {'query': query, 'by': by});
+  }) => _invoke('ui_find_elements', {'query': query, 'by': by});
 
   /// Find an element matching [query] (searched by [by]) and click it.
   Future<Map<String, dynamic>> clickElement(String query, String by) =>
@@ -81,14 +89,13 @@ class UiAutomationService {
     String? type,
     String? package_,
     Map<String, dynamic>? extras,
-  }) =>
-      _invoke('ui_launch_intent', {
-        if (action != null) 'action': action,
-        if (uri != null) 'uri': uri,
-        if (type != null) 'type': type,
-        if (package_ != null) 'package': package_,
-        if (extras != null) 'extras': extras,
-      });
+  }) => _invoke('ui_launch_intent', {
+    if (action != null) 'action': action,
+    if (uri != null) 'uri': uri,
+    if (type != null) 'type': type,
+    if (package_ != null) 'package': package_,
+    if (extras != null) 'extras': extras,
+  });
 
   /// List exported activities and intent filters of a specific app.
   Future<Map<String, dynamic>> appIntents(String package_) =>
@@ -98,11 +105,10 @@ class UiAutomationService {
   Future<Map<String, dynamic>> listApps({
     bool launchableOnly = true,
     String? search,
-  }) =>
-      _invoke('ui_list_apps', {
-        'launchable_only': launchableOnly,
-        if (search != null) 'search': search,
-      });
+  }) => _invoke('ui_list_apps', {
+    'launchable_only': launchableOnly,
+    if (search != null) 'search': search,
+  });
 
   // ─── Internal ──────────────────────────────────────────────────────────────
 
@@ -110,18 +116,23 @@ class UiAutomationService {
     String method, [
     Map<String, dynamic>? args,
   ]) async {
+    _log(method, args);
     try {
       final result = await _channel.invokeMapMethod<String, dynamic>(
         method,
         args,
       );
-      return result ?? {};
+      final resultMap = result ?? {};
+      _logResult(method, resultMap);
+      return resultMap;
     } on PlatformException catch (e) {
-      return {
+      final errorMap = {
         'error': true,
         'code': e.code,
         'message': e.message ?? 'Unknown error',
       };
+      _logResult(method, errorMap);
+      return errorMap;
     }
   }
 }
