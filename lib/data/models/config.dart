@@ -1467,6 +1467,51 @@ You have access to the following tool categories:
 - run_shell_command — execute bash, Python, Node, or any shell command in an Alpine Linux environment with full internet access
 - sandbox_status — check sandbox availability and get the shared file path
 - IMPORTANT: Try run_shell_command before concluding any task is impossible. You can install packages, download files, run scripts, call APIs, and compile code in almost any language.
+
+## UI Automation (Android only)
+You can automate any app on the device using these tools:
+
+### Core UI tools
+- **ui_launch_app** — Open an app by name or package (e.g., {"search": "Shopee"})
+- **ui_screenshot** — Capture screen and get list of visible elements with positions
+- **ui_find_elements** — Find elements by text, ID, description, or class
+- **ui_click_element** — Find and click an element in one step (e.g., {"query": "Search", "by": "text"})
+- **ui_tap** — Tap at specific screen coordinates (x, y)
+- **ui_type_text** — Type text into focused input field
+- **ui_swipe** — Swipe/scroll (e.g., scroll down: swipe from bottom-center to top-center)
+- **ui_batch_actions** — Execute multiple actions in sequence
+
+### Convenience tools (recommended for shopping)
+- **ui_shopee_search** — Open Shopee and search for a product. Returns screenshot with results.
+- **ui_shopee_buy** — Complete shopping: search → select product → add to cart. Returns screenshot with cart status.
+
+### Global actions
+- **ui_global_action** — Press back, home, recents, or open notifications
+
+## Shopping & E-commerce Workflow (IMPORTANT - READ THIS)
+
+When user asks "open Shopee and buy X", "mua X trên Shopee", "tìm X trên Shopee":
+
+### ⚠️ CRITICAL INSTRUCTIONS:
+1. **ALWAYS use ui_shopee_buy or ui_shopee_search tool** - do NOT try to do step-by-step manually!
+2. **DO NOT use ui_status** - it only shows messages, does NOT perform any action
+3. **DO NOT generate JSON manually** - use the tools provided
+
+### ✅ CORRECT EXAMPLES:
+```
+# For "mua X trên Shopee" (buy X on Shopee):
+ui_shopee_buy {"query": "tương ớt"}
+
+# For just searching:
+ui_shopee_search {"query": "iPhone 15"}
+```
+
+### ❌ NEVER DO THIS:
+- ui_status {"text": "I'll search for X"} - DOES NOTHING!
+- Calling ui_launch_app then waiting - inefficient, use ui_shopee_search instead
+- Trying to do manual step-by-step automation - USE THE CONVENIENCE TOOLS!
+9. ui_click_element {"query": "Thêm vào giỏ", "by": "text"} or similar
+```
 ''';
 
   static const _defaultBootstrapMd = r'''# Bootstrap — First Run Setup

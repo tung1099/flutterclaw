@@ -74,6 +74,8 @@ import 'package:flutterclaw/tools/cron_tools.dart';
 import 'package:flutterclaw/tools/shortcut_tools.dart';
 import 'package:flutterclaw/tools/skill_tools.dart';
 import 'package:flutterclaw/tools/ui_automation_tools.dart';
+import 'package:flutterclaw/tools/ui_shopee_search.dart';
+import 'package:flutterclaw/tools/ui_shopee_buy.dart';
 import 'package:flutterclaw/tools/http_tools.dart';
 import 'package:flutterclaw/tools/web_tools.dart';
 import 'package:flutterclaw/tools/workspace_pick_tools.dart';
@@ -115,10 +117,13 @@ final configManagerProvider = Provider<ConfigManager>((ref) {
   final mgr = ConfigManager();
   // Wire secrets resolver so $ref values in API keys are resolved at use time.
   mgr.secretsResolver = (ref_) => SecureKeyStore.getSecret(
-        ref_.startsWith(r'{"$ref":"secrets/')
-            ? ref_.substring(r'{"$ref":"secrets/'.length).replaceAll('"}}', '').replaceAll('"}', '')
-            : ref_,
-      );
+    ref_.startsWith(r'{"$ref":"secrets/')
+        ? ref_
+              .substring(r'{"$ref":"secrets/'.length)
+              .replaceAll('"}}', '')
+              .replaceAll('"}', '')
+        : ref_,
+  );
   return mgr;
 });
 
@@ -214,14 +219,16 @@ final activeModelSupportsLiveProvider = Provider<bool>((ref) {
   final config = ref.watch(configManagerProvider).config;
 
   // Active model entry must exist.
-  final modelEntry = config.modelList
-      .cast<ModelEntry?>()
-      .firstWhere((m) => m!.modelName == agent.modelName, orElse: () => null);
+  final modelEntry = config.modelList.cast<ModelEntry?>().firstWhere(
+    (m) => m!.modelName == agent.modelName,
+    orElse: () => null,
+  );
   if (modelEntry == null) return false;
 
   // Catalog must have at least one Live (call-mode) model for this provider.
-  final hasLiveModel = ModelCatalog.models
-      .any((m) => m.providerId == modelEntry.provider && m.isLiveModel);
+  final hasLiveModel = ModelCatalog.models.any(
+    (m) => m.providerId == modelEntry.provider && m.isLiveModel,
+  );
   if (!hasLiveModel) return false;
 
   // An API key must be configured for this provider.
@@ -238,9 +245,10 @@ final activeAgentChatModelIsLiveOnlyProvider = Provider<bool>((ref) {
   final agent = ref.watch(activeAgentProvider);
   if (agent == null) return false;
   final config = ref.watch(configManagerProvider).config;
-  final modelEntry = config.modelList
-      .cast<ModelEntry?>()
-      .firstWhere((m) => m!.modelName == agent.modelName, orElse: () => null);
+  final modelEntry = config.modelList.cast<ModelEntry?>().firstWhere(
+    (m) => m!.modelName == agent.modelName,
+    orElse: () => null,
+  );
   return modelEntry?.isLiveOnly ?? false;
 });
 
@@ -370,11 +378,13 @@ final toolRegistryProvider = Provider<ToolRegistry>((ref) {
             // Use the late-bound reference to avoid a circular provider dependency
             // (toolRegistryProvider → channelRouterProvider → agentLoopProvider → toolRegistryProvider).
             final router = _browserOverlayChannelRouter;
-            await router?.sendMessage(OutgoingMessage(
-              channelType: channelType,
-              chatId: chatId,
-              text: '🌐 $agentName needs your help in the app:\n\n$message',
-            ));
+            await router?.sendMessage(
+              OutgoingMessage(
+                channelType: channelType,
+                chatId: chatId,
+                text: '🌐 $agentName needs your help in the app:\n\n$message',
+              ),
+            );
           }
         } catch (_) {}
       }
@@ -427,7 +437,8 @@ final toolRegistryProvider = Provider<ToolRegistry>((ref) {
                 {'type': 'image', 'data': base64Data, 'mimeType': mimeType},
                 {
                   'type': 'text',
-                  'text': 'Describe this screenshot concisely (2-4 sentences). '
+                  'text':
+                      'Describe this screenshot concisely (2-4 sentences). '
                       'Include: page type, main visible content, key UI elements, '
                       'any text/buttons, and overall state (login form, feed, error, etc.).',
                 },
@@ -446,7 +457,12 @@ final toolRegistryProvider = Provider<ToolRegistry>((ref) {
     },
   );
   registry.register(WebFetchTool(headlessBrowser: headlessBrowser));
-  registry.register(WebImageSearchTool(config: configManager.config, headlessBrowser: headlessBrowser));
+  registry.register(
+    WebImageSearchTool(
+      config: configManager.config,
+      headlessBrowser: headlessBrowser,
+    ),
+  );
   registry.register(HttpRequestTool());
   registry.register(ImageGenTool(configManager: configManager));
   registry.register(TtsTool(ref.read(textToSpeechServiceProvider)));
@@ -511,14 +527,15 @@ final toolRegistryProvider = Provider<ToolRegistry>((ref) {
   registry.register(EmailReadTool(() => configManager.config.emailAccounts));
   registry.register(EmailFoldersTool(() => configManager.config.emailAccounts));
   final oauthService = OAuthService();
-  registry.register(OAuthAuthorizeTool(
-    () => configManager.config.oauthConnections,
-    oauthService,
-  ));
-  registry.register(OAuthTokenTool(
-    () => configManager.config.oauthConnections,
-    oauthService,
-  ));
+  registry.register(
+    OAuthAuthorizeTool(
+      () => configManager.config.oauthConnections,
+      oauthService,
+    ),
+  );
+  registry.register(
+    OAuthTokenTool(() => configManager.config.oauthConnections, oauthService),
+  );
   registry.register(GetHealthDataTool());
   registry.register(HealthStatusTool());
   registry.register(MediaPlayTool());
@@ -735,10 +752,18 @@ final toolRegistryProvider = Provider<ToolRegistry>((ref) {
 
   // Action center tools
   final actionCenterService = ref.read(actionCenterServiceProvider);
-  registry.register(ActionCenterAddTool(actionCenterService: actionCenterService));
-  registry.register(ActionCenterListTool(actionCenterService: actionCenterService));
-  registry.register(ActionCenterReadTool(actionCenterService: actionCenterService));
-  registry.register(ActionCenterDismissTool(actionCenterService: actionCenterService));
+  registry.register(
+    ActionCenterAddTool(actionCenterService: actionCenterService),
+  );
+  registry.register(
+    ActionCenterListTool(actionCenterService: actionCenterService),
+  );
+  registry.register(
+    ActionCenterReadTool(actionCenterService: actionCenterService),
+  );
+  registry.register(
+    ActionCenterDismissTool(actionCenterService: actionCenterService),
+  );
 
   // Shortcut tools
   final shortcutTools = ref.read(shortcutToolsServiceProvider);
@@ -764,6 +789,8 @@ final toolRegistryProvider = Provider<ToolRegistry>((ref) {
   registry.register(UiBatchActionsTool(uiSvc, uiOverlay));
   registry.register(UiAskUserTool(uiOverlay));
   registry.register(UiStatusTool(uiOverlay));
+  registry.register(UiShopeeSearchTool(uiSvc, uiOverlay));
+  registry.register(UiShopeeBuyTool(uiSvc, uiOverlay));
 
   // Sandbox shell tool (Android: PRoot + Alpine rootfs; iOS: unavailable stub)
   final sandboxSvc = ref.read(sandboxServiceProvider);
@@ -781,32 +808,35 @@ final toolRegistryProvider = Provider<ToolRegistry>((ref) {
   final mcpManager = ref.read(mcpClientManagerProvider);
   registry.register(SetLiveVoiceTool(configManager));
 
-  registry.register(McpServerListTool(
-      configManager: configManager, mcpManager: mcpManager));
   registry.register(
-      McpServerAddTool(configManager: configManager, mcpManager: mcpManager));
-  registry.register(McpServerRemoveTool(
-      configManager: configManager, mcpManager: mcpManager));
+    McpServerListTool(configManager: configManager, mcpManager: mcpManager),
+  );
+  registry.register(
+    McpServerAddTool(configManager: configManager, mcpManager: mcpManager),
+  );
+  registry.register(
+    McpServerRemoveTool(configManager: configManager, mcpManager: mcpManager),
+  );
 
   // MCP server tools — dynamically registered when servers connect/disconnect.
   mcpManager.onToolsChanged = (serverId, entry, tools) {
     // Remove old proxy tools for this server, then register the new ones.
     registry.unregisterPrefix('mcp_${McpProxyTool.sanitizeName(entry.name)}_');
     for (final toolInfo in tools) {
-      registry.register(McpProxyTool(
-        serverId: serverId,
-        serverName: entry.name,
-        toolName: toolInfo.name,
-        toolDescription: toolInfo.description,
-        inputSchema: toolInfo.inputSchema,
-        manager: mcpManager,
-      ));
+      registry.register(
+        McpProxyTool(
+          serverId: serverId,
+          serverName: entry.name,
+          toolName: toolInfo.name,
+          toolDescription: toolInfo.description,
+          inputSchema: toolInfo.inputSchema,
+          manager: mcpManager,
+        ),
+      );
     }
   };
   // Connect enabled MCP servers in the background (non-blocking).
-  unawaited(
-    mcpManager.connectAll(configManager.config.mcpServers),
-  );
+  unawaited(mcpManager.connectAll(configManager.config.mcpServers));
 
   return registry;
 });
@@ -861,7 +891,9 @@ final agentLoopProvider = Provider<AgentLoop>((ref) {
         overlayService.show(label).catchError((e) {
           log.warning('Overlay show failed: $e');
         });
-        notifService.showToolStatusNotification(agentName, label).catchError((e) {
+        notifService.showToolStatusNotification(agentName, label).catchError((
+          e,
+        ) {
           log.warning('Notification failed: $e');
         });
       } catch (e) {
@@ -889,7 +921,9 @@ final batteryServiceProvider = Provider<BatteryService>((ref) {
   return BatteryService();
 });
 
-final authProfileServiceProvider = FutureProvider<AuthProfileService>((ref) async {
+final authProfileServiceProvider = FutureProvider<AuthProfileService>((
+  ref,
+) async {
   final configManager = ref.read(configManagerProvider);
   final base = await configManager.configDir;
   final svc = AuthProfileService(
@@ -903,9 +937,7 @@ final authProfileServiceProvider = FutureProvider<AuthProfileService>((ref) asyn
 });
 
 final secretsResolverProvider = Provider<SecretsResolver>((ref) {
-  return SecretsResolver(
-    readSecret: (name) => SecureKeyStore.getSecret(name),
-  );
+  return SecretsResolver(readSecret: (name) => SecureKeyStore.getSecret(name));
 });
 
 final webChatAdapterProvider = Provider<WebChatChannelAdapter>((ref) {
@@ -920,7 +952,9 @@ final textToSpeechServiceProvider = Provider<TextToSpeechService>((ref) {
 
 /// Builds an [AudioTranscriptionService] using the currently active model's
 /// API key and base URL. Returns null if no API key is configured.
-AudioTranscriptionService? _buildTranscriptionService(ConfigManager configManager) {
+AudioTranscriptionService? _buildTranscriptionService(
+  ConfigManager configManager,
+) {
   final config = configManager.config;
   final modelName =
       config.activeAgent?.modelName ?? config.agents.defaults.modelName;
@@ -946,7 +980,8 @@ final channelRouterProvider = Provider<ChannelRouter>((ref) {
 
   late final ChannelRouter router;
   router = ChannelRouter(
-    transcriptionServiceFactory: () => _buildTranscriptionService(configManager),
+    transcriptionServiceFactory: () =>
+        _buildTranscriptionService(configManager),
     agentHandler: (IncomingMessage msg) async {
       try {
         final response = await agentLoop.processMessage(
@@ -992,14 +1027,16 @@ final channelRouterProvider = Provider<ChannelRouter>((ref) {
           ),
         );
       } catch (e, st) {
-        Logger('agentHandler').severe(
-            'Failed processing ${msg.channelType} message', e, st);
+        Logger(
+          'agentHandler',
+        ).severe('Failed processing ${msg.channelType} message', e, st);
         try {
           await router.sendMessage(
             OutgoingMessage(
               channelType: msg.channelType,
               chatId: msg.chatId,
-              text: 'Sorry, something went wrong processing your message. '
+              text:
+                  'Sorry, something went wrong processing your message. '
                   'Please try again.',
             ),
           );
@@ -1123,8 +1160,8 @@ final skillsServiceProvider = Provider<SkillsService>((ref) {
       final modelForApi = entry.provider == 'openrouter'
           ? entry.model
           : entry.provider == 'bedrock'
-              ? entry.model
-              : entry.modelId;
+          ? entry.model
+          : entry.modelId;
 
       final cred = config.providerCredentials[entry.provider];
       final provider = vendorConfig?.provider ?? OpenAiProvider();
@@ -1321,6 +1358,7 @@ class ChatMessage {
   final DateTime timestamp;
   final bool isStreaming;
   final bool isToolStatus;
+
   /// When non-null, the tool result that can be shown on expand.
   final String? toolResultText;
 
@@ -1466,8 +1504,9 @@ final activeSessionMetaProvider = Provider<SessionMeta?>((ref) {
 
 /// Whether persistent unsafe mode (security bypass) is currently enabled.
 /// Synced with [ToolRegistry.persistentUnsafeMode].
-final unsafeModeProvider =
-    NotifierProvider<_UnsafeModeNotifier, bool>(_UnsafeModeNotifier.new);
+final unsafeModeProvider = NotifierProvider<_UnsafeModeNotifier, bool>(
+  _UnsafeModeNotifier.new,
+);
 
 class _UnsafeModeNotifier extends Notifier<bool> {
   @override
@@ -1759,10 +1798,10 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
     });
     ref.onDispose(subagentSub.cancel);
 
-    final liveEvSub =
-        ref.read(liveSessionProvider.notifier).agentEvents.listen(
-              _handleLiveAgentEvent,
-            );
+    final liveEvSub = ref
+        .read(liveSessionProvider.notifier)
+        .agentEvents
+        .listen(_handleLiveAgentEvent);
     ref.onDispose(() {
       liveEvSub.cancel();
       _cancelLiveTranscriptUi();
@@ -1783,7 +1822,8 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
       final (sessionKey, message) = event;
       if (sessionKey != _getSessionKey()) return;
       final liveOn = _liveVoiceChatActive();
-      if (_processing && !liveOn) return; // We are already managing state ourselves.
+      if (_processing && !liveOn)
+        return; // We are already managing state ourselves.
       if (message.role == 'system') return;
 
       // Tool result written by SessionManager (e.g. Gemini Live) — close the pill.
@@ -1834,11 +1874,7 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
         }
         if (text.trim().isNotEmpty) {
           updated.add(
-            ChatMessage(
-              text: text,
-              isUser: false,
-              timestamp: DateTime.now(),
-            ),
+            ChatMessage(text: text, isUser: false, timestamp: DateTime.now()),
           );
         }
         state = updated;
@@ -1850,7 +1886,8 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
 
       // During a voice call, plain user/assistant rows are streamed via
       // [LiveUserTranscript]/[LiveModelTranscript]; session persist would duplicate.
-      final plainAssistant = message.role == 'assistant' &&
+      final plainAssistant =
+          message.role == 'assistant' &&
           (message.toolCalls == null || message.toolCalls!.isEmpty);
       if (liveOn && (message.role == 'user' || plainAssistant)) {
         return;
@@ -2030,10 +2067,9 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
         configManager.config.agents.defaults.preferLiveVoiceBootstrap;
     final liveOk = ref.read(activeModelSupportsLiveProvider);
     if (preferLive && liveOk) {
-      await ref.read(liveSessionProvider.notifier).startSession(
-            voiceBootstrap: true,
-            userLanguage: userLanguage,
-          );
+      await ref
+          .read(liveSessionProvider.notifier)
+          .startSession(voiceBootstrap: true, userLanguage: userLanguage);
       return;
     }
 
@@ -2091,7 +2127,9 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
           // If a tool returned an interactive payload, inject an interactive
           // message into the chat so the user can tap buttons/selects.
           if (event.toolDetails != null) {
-            final interactive = parseInteractiveReply(event.toolDetails!['interactive']);
+            final interactive = parseInteractiveReply(
+              event.toolDetails!['interactive'],
+            );
             if (interactive != null) {
               final updated = List<ChatMessage>.from(state);
               updated.insert(
@@ -2135,7 +2173,8 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
             // the actual model used to the Live Activity so it shows correctly.
             if (resp?.modelUsed != null) {
               final gwNotifier = ref.read(gatewayStateProvider.notifier);
-              if (resp!.modelUsed != ref.read(gatewayStateProvider).currentModel) {
+              if (resp!.modelUsed !=
+                  ref.read(gatewayStateProvider).currentModel) {
                 gwNotifier.setModel(resp.modelUsed!);
               }
             }
@@ -2546,7 +2585,9 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
           if (event.toolResultChunk != null) {
             final chunk = event.toolResultChunk!;
             final isClear = chunk.startsWith('\x00CLEAR\x00');
-            print('[ChatNotifier] toolResultChunk len=${chunk.length} isClear=$isClear');
+            print(
+              '[ChatNotifier] toolResultChunk len=${chunk.length} isClear=$isClear',
+            );
             final updated = List<ChatMessage>.from(state);
             bool found = false;
             for (var i = updated.length - 1; i >= 0; i--) {
@@ -2559,12 +2600,15 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
                 } else {
                   newText = (updated[i].toolResultText ?? '') + chunk;
                 }
-                print('[ChatNotifier] → updating pill at i=$i, newText len=${newText.length}');
+                print(
+                  '[ChatNotifier] → updating pill at i=$i, newText len=${newText.length}',
+                );
                 updated[i] = updated[i].copyWith(toolResultText: newText);
                 break;
               }
             }
-            if (!found) print('[ChatNotifier] ⚠ no streaming pill found for chunk!');
+            if (!found)
+              print('[ChatNotifier] ⚠ no streaming pill found for chunk!');
             state = updated;
           }
 
@@ -2581,7 +2625,9 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
                 // Fall back to event.toolResult if no CLEAR chunk arrived.
                 final existing = updated[i].toolResultText;
                 final useExisting = existing != null && existing.isNotEmpty;
-                print('[ChatNotifier] → marking pill at i=$i as done, useExisting=$useExisting existing=${existing?.length}');
+                print(
+                  '[ChatNotifier] → marking pill at i=$i as done, useExisting=$useExisting existing=${existing?.length}',
+                );
                 updated[i] = updated[i].copyWith(
                   isStreaming: false,
                   toolResultText: useExisting ? existing : event.toolResult,
@@ -2589,7 +2635,8 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
                 break;
               }
             }
-            if (!found) print('[ChatNotifier] ⚠ no streaming pill found for toolResult!');
+            if (!found)
+              print('[ChatNotifier] ⚠ no streaming pill found for toolResult!');
             state = updated;
           }
 
@@ -2631,8 +2678,9 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
                   ),
                 );
               } catch (e) {
-                Logger('ChatNotifier').warning(
-                    'Failed to route response to $channelType', e);
+                Logger(
+                  'ChatNotifier',
+                ).warning('Failed to route response to $channelType', e);
               }
             }
 
@@ -2695,7 +2743,10 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
   /// Uses the configured model's API base (falls back to OpenAI). If the API
   /// key is for a provider that doesn't support Whisper (e.g. Anthropic), the
   /// transcription will fail gracefully and return false.
-  Future<bool> transcribeAndSend(String audioFilePath, {String? language}) async {
+  Future<bool> transcribeAndSend(
+    String audioFilePath, {
+    String? language,
+  }) async {
     if (_processing) return false;
 
     final config = ref.read(configManagerProvider).config;
@@ -2961,7 +3012,9 @@ class GatewayStateNotifier extends Notifier<GatewayState> {
     // Keep currentModel in sync when the active agent or its model changes.
     ref.listen<AgentProfile?>(activeAgentProvider, (_, next) {
       final newModel = next?.modelName;
-      if (newModel != null && newModel.isNotEmpty && newModel != state.currentModel) {
+      if (newModel != null &&
+          newModel.isNotEmpty &&
+          newModel != state.currentModel) {
         setModel(newModel);
       }
     });
@@ -2980,7 +3033,8 @@ class GatewayStateNotifier extends Notifier<GatewayState> {
     String? modelOnStart;
     if (running) {
       final config = ref.read(configManagerProvider).config;
-      modelOnStart = config.activeAgent?.modelName ?? config.agents.defaults.modelName;
+      modelOnStart =
+          config.activeAgent?.modelName ?? config.agents.defaults.modelName;
     }
     state = state.copyWith(
       isRunning: running,
@@ -3171,18 +3225,20 @@ class LiveSessionState {
     this.errorMessage,
   });
 
-  LiveSessionState copyWith({LiveSessionStatus? status, String? errorMessage}) =>
-      LiveSessionState(
-        status: status ?? this.status,
-        errorMessage: errorMessage,
-      );
+  LiveSessionState copyWith({
+    LiveSessionStatus? status,
+    String? errorMessage,
+  }) => LiveSessionState(
+    status: status ?? this.status,
+    errorMessage: errorMessage,
+  );
 }
 
 /// Orchestrates the full Gemini Live session lifecycle.
 final liveSessionProvider =
     NotifierProvider<LiveSessionNotifier, LiveSessionState>(
-  LiveSessionNotifier.new,
-);
+      LiveSessionNotifier.new,
+    );
 
 class LiveSessionNotifier extends Notifier<LiveSessionState> {
   LiveAgentLoop? _agentLoop;
@@ -3233,9 +3289,7 @@ class LiveSessionNotifier extends Notifier<LiveSessionState> {
       return;
     }
 
-    _liveLog.info(
-      'startSession: initiated voiceBootstrap=$voiceBootstrap',
-    );
+    _liveLog.info('startSession: initiated voiceBootstrap=$voiceBootstrap');
     state = state.copyWith(status: LiveSessionStatus.connecting);
 
     try {
@@ -3262,19 +3316,18 @@ class LiveSessionNotifier extends Notifier<LiveSessionState> {
       final provider = agentModelEntry?.provider ?? 'google';
 
       // Find the Live model: optional user override, else first catalog Live for provider.
-      const fallbackLiveModelId = 'gemini-2.5-flash-preview-native-audio-dialog';
-      final overrideId =
-          configManager.config.agents.defaults.liveVoiceModelId;
+      const fallbackLiveModelId =
+          'gemini-2.5-flash-preview-native-audio-dialog';
+      final overrideId = configManager.config.agents.defaults.liveVoiceModelId;
       CatalogModel? overrideCatalog;
       if (overrideId != null && overrideId.isNotEmpty) {
         final cm = ModelCatalog.tryGetModelFlexible(overrideId);
-        if (cm != null &&
-            cm.providerId == provider &&
-            cm.isLiveModel) {
+        if (cm != null && cm.providerId == provider && cm.isLiveModel) {
           overrideCatalog = cm;
         }
       }
-      final liveModelId = overrideCatalog?.id ??
+      final liveModelId =
+          overrideCatalog?.id ??
           ModelCatalog.models
               .cast<CatalogModel?>()
               .firstWhere(
@@ -3285,22 +3338,26 @@ class LiveSessionNotifier extends Notifier<LiveSessionState> {
           fallbackLiveModelId;
 
       // Resolve API key for this provider.
-      final apiKey = configManager.config.providerCredentials[provider]?.apiKey
+      final apiKey =
+          configManager
+                  .config
+                  .providerCredentials[provider]
+                  ?.apiKey
                   .isNotEmpty ==
               true
           ? configManager.config.providerCredentials[provider]!.apiKey
           : (agentModelEntry?.apiKey?.isNotEmpty == true
-              ? agentModelEntry!.apiKey!
-              : configManager.config.modelList
-                      .cast<ModelEntry?>()
-                      .firstWhere(
-                        (m) =>
-                            m!.provider == provider &&
-                            m.apiKey?.isNotEmpty == true,
-                        orElse: () => null,
-                      )
-                      ?.apiKey ??
-                  '');
+                ? agentModelEntry!.apiKey!
+                : configManager.config.modelList
+                          .cast<ModelEntry?>()
+                          .firstWhere(
+                            (m) =>
+                                m!.provider == provider &&
+                                m.apiKey?.isNotEmpty == true,
+                            orElse: () => null,
+                          )
+                          ?.apiKey ??
+                      '');
 
       _liveLog.info(
         'startSession: liveModel=$liveModelId '
@@ -3322,7 +3379,8 @@ class LiveSessionNotifier extends Notifier<LiveSessionState> {
         agentId: activeAgent?.id,
         userLanguage: userLanguage,
       );
-      const voiceNote = '\n\n# Voice session\n'
+      const voiceNote =
+          '\n\n# Voice session\n'
           'You are in a real-time voice call. Animate naturally — speak in the '
           'same manner as if you were in text chat. Follow workspace instructions, '
           'BOOTSTRAP when it applies (e.g. first hatch), and use tools when the '
@@ -3396,7 +3454,9 @@ class LiveSessionNotifier extends Notifier<LiveSessionState> {
       // Wait for setup complete or error.
       final firstEvent = await liveService.events.first;
       if (firstEvent is! SetupComplete) {
-        final msg = firstEvent is LiveError ? firstEvent.message : 'Setup failed';
+        final msg = firstEvent is LiveError
+            ? firstEvent.message
+            : 'Setup failed';
         state = state.copyWith(
           status: LiveSessionStatus.error,
           errorMessage: msg,
@@ -3416,15 +3476,17 @@ class LiveSessionNotifier extends Notifier<LiveSessionState> {
       // record mic input and play back the model's audio output.
       try {
         final audioSession = await AudioSession.instance;
-        await audioSession.configure(AudioSessionConfiguration(
-          avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
-          avAudioSessionCategoryOptions:
-              AVAudioSessionCategoryOptions.defaultToSpeaker |
-              AVAudioSessionCategoryOptions.allowBluetooth,
-          avAudioSessionMode: AVAudioSessionMode.voiceChat,
-          avAudioSessionSetActiveOptions:
-              AVAudioSessionSetActiveOptions.notifyOthersOnDeactivation,
-        ));
+        await audioSession.configure(
+          AudioSessionConfiguration(
+            avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
+            avAudioSessionCategoryOptions:
+                AVAudioSessionCategoryOptions.defaultToSpeaker |
+                AVAudioSessionCategoryOptions.allowBluetooth,
+            avAudioSessionMode: AVAudioSessionMode.voiceChat,
+            avAudioSessionSetActiveOptions:
+                AVAudioSessionSetActiveOptions.notifyOthersOnDeactivation,
+          ),
+        );
         await audioSession.setActive(true);
         _liveLog.info('startSession: audio session configured (playAndRecord)');
       } catch (e) {

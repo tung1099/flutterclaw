@@ -222,6 +222,7 @@ class SkillsService {
       'headless-browser',
       'health-analyst',
       'weather',
+      'shopping',
     ];
 
     for (final name in bundledSkills) {
