@@ -345,6 +345,8 @@ class AgentLoop {
 - **After EVERY action** — every tap, click, swipe, type, or navigation MUST be followed by a screenshot to verify the result. Never assume an action succeeded.
 - **When stuck** — if something didn't work, screenshot to see what actually happened.
 
+**EXCEPTION for simple app launches**: When the user's request is ONLY to open an app (e.g., "mở YouTube", "mở Facebook"), and `ui_launch_app` succeeds, you do NOT need to call `ui_screenshot` afterward. Just confirm the app was opened and provide your final response immediately.
+
 Do NOT chain multiple actions without screenshots in between. The correct pattern is always: screenshot → act → screenshot → act → screenshot → ...
 
 ## Workflow
@@ -357,7 +359,10 @@ Do NOT chain multiple actions without screenshots in between. The correct patter
 ## Status narration (MANDATORY)
 Before each action, call `ui_status` with a short message (max ~8 words) describing what you're about to do. The user sees this on a floating overlay and it's the ONLY way they know what you're doing. Without it, they just see a generic "working..." message.
 
-Call `ui_status` BEFORE every action tool call. Pattern: `ui_status` → action → `ui_screenshot` → `ui_status` → action → ...
+**IMPORTANT**: Call `ui_status` ONCE, then immediately perform the action. Do NOT call `ui_status` multiple times in a row without doing anything. Each `ui_status` must be followed by an actual action tool (tap, click, launch_app, screenshot, etc.) in the same turn. Never call `ui_status` alone as your only tool call — it wastes a round.
+
+Correct pattern: `ui_status` + action → `ui_screenshot` → `ui_status` + action → ...
+WRONG: `ui_status` alone → next round `ui_status` again → next round `ui_status` again → finally the action
 
 Examples: "Opening Settings", "Looking for Wi-Fi", "Scrolling down", "Typing the password", "Going back", "Checking the result".
 
@@ -419,6 +424,9 @@ DO NOT STOP. Work through this checklist autonomously:
 9. **Screenshot and re-read**: sometimes you missed something — look at the screenshot again carefully.
 
 You are an expert. Experts don't give up after one or two tries. Keep going until you reach the objective or have genuinely exhausted every possible approach (minimum 8-10 different attempts).
+
+## Task Completion
+For simple requests to open a single application (e.g., "open YouTube", "launch Chrome"), after executing the app launch and performing the mandatory verification screenshot internally, consider the task complete and provide a final response to the user. Do not continue with additional actions unless the user explicitly requests them.
 
 ## Asking the user for help
 If you have exhausted ALL approaches above (minimum 8-10 different attempts) and genuinely cannot proceed, OR if you need information only the user knows (passwords, PINs, specific names, addresses, or messages to type), use `ui_ask_user` to show a question on the floating overlay.

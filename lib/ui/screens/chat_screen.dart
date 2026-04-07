@@ -337,7 +337,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   @override
   Widget build(BuildContext context) {
     final messages = ref.watch(chatProvider);
-    final isProcessing = ref.read(chatProvider.notifier).isProcessing;
+    final isProcessing = ref.watch(chatProvider.notifier).isProcessing;
     final modelSupportsVision = ref.watch(activeModelSupportsVisionProvider);
     final activeAgent = ref.watch(activeAgentProvider);
     final liveStatus = ref.watch(liveSessionProvider).status;
@@ -368,92 +368,95 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 decoration: showLiveOverlay
                     ? BoxDecoration(
                         border: Border.all(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.20),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: 0.20),
                           width: 1.5,
                         ),
                       )
                     : const BoxDecoration(),
                 child: Stack(
                   children: [
-                  messages.isEmpty
-                      ? Padding(
-                          padding: EdgeInsets.only(
-                            top: showLiveOverlay
-                                ? LiveVoiceOverlay.listTopPaddingWhenLive
-                                : 0,
-                          ),
-                          child: _ChatEmptyState(agent: activeAgent),
-                        )
-                      : ListView.builder(
-                          controller: _scrollController,
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          padding: EdgeInsets.fromLTRB(
-                            12,
-                            showLiveOverlay
-                                ? LiveVoiceOverlay.listTopPaddingWhenLive
-                                : 8,
-                            12,
-                            8,
-                          ),
-                          itemCount: messages.length,
-                          itemBuilder: (context, index) {
-                            final msg = messages[index];
-                            final prev = index > 0 ? messages[index - 1] : null;
-                            final showSeparator = _shouldShowDateSeparator(
-                              prev,
-                              msg,
-                            );
-                            return Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (showSeparator)
-                                  ChatDateSeparator(timestamp: msg.timestamp),
-                                MessageBubble(
-                                  message: msg,
-                                  onCopy: () {
-                                    Clipboard.setData(
-                                      ClipboardData(text: msg.text),
-                                    );
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          context.l10n.copiedToClipboard,
+                    messages.isEmpty
+                        ? Padding(
+                            padding: EdgeInsets.only(
+                              top: showLiveOverlay
+                                  ? LiveVoiceOverlay.listTopPaddingWhenLive
+                                  : 0,
+                            ),
+                            child: _ChatEmptyState(agent: activeAgent),
+                          )
+                        : ListView.builder(
+                            controller: _scrollController,
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            padding: EdgeInsets.fromLTRB(
+                              12,
+                              showLiveOverlay
+                                  ? LiveVoiceOverlay.listTopPaddingWhenLive
+                                  : 8,
+                              12,
+                              8,
+                            ),
+                            itemCount: messages.length,
+                            itemBuilder: (context, index) {
+                              final msg = messages[index];
+                              final prev = index > 0
+                                  ? messages[index - 1]
+                                  : null;
+                              final showSeparator = _shouldShowDateSeparator(
+                                prev,
+                                msg,
+                              );
+                              return Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (showSeparator)
+                                    ChatDateSeparator(timestamp: msg.timestamp),
+                                  MessageBubble(
+                                    message: msg,
+                                    onCopy: () {
+                                      Clipboard.setData(
+                                        ClipboardData(text: msg.text),
+                                      );
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            context.l10n.copiedToClipboard,
+                                          ),
+                                          duration: const Duration(seconds: 1),
                                         ),
-                                        duration: const Duration(seconds: 1),
-                                      ),
-                                    );
-                                  },
-                                  onKillProcess: () => ref
-                                      .read(chatProvider.notifier)
-                                      .killCurrentProcess(),
-                                  onStdinWrite: (data) => ref
-                                      .read(sandboxServiceProvider)
-                                      .writeStdin(data),
-                                ),
-                              ],
-                            );
-                          },
+                                      );
+                                    },
+                                    onKillProcess: () => ref
+                                        .read(chatProvider.notifier)
+                                        .killCurrentProcess(),
+                                    onStdinWrite: (data) => ref
+                                        .read(sandboxServiceProvider)
+                                        .writeStdin(data),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                    // Scroll-to-bottom FAB
+                    if (!_isNearBottom && messages.isNotEmpty)
+                      Positioned(
+                        bottom: 8,
+                        right: 12,
+                        child: FloatingActionButton.small(
+                          heroTag: 'scroll_to_bottom',
+                          onPressed: () => _scrollToBottom(force: true),
+                          child: const Icon(Icons.keyboard_arrow_down),
                         ),
-                  // Scroll-to-bottom FAB
-                  if (!_isNearBottom && messages.isNotEmpty)
-                    Positioned(
-                      bottom: 8,
-                      right: 12,
-                      child: FloatingActionButton.small(
-                        heroTag: 'scroll_to_bottom',
-                        onPressed: () => _scrollToBottom(force: true),
-                        child: const Icon(Icons.keyboard_arrow_down),
                       ),
-                    ),
-                  // Live voice overlay
-                  if (showLiveOverlay) const LiveVoiceOverlay(),
-                ],
+                    // Live voice overlay
+                    if (showLiveOverlay) const LiveVoiceOverlay(),
+                  ],
+                ),
               ),
-            ),
             ),
             ChatInputBar(
               controller: _controller,

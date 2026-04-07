@@ -7,6 +7,9 @@ import 'package:flutterclaw/tools/registry.dart';
 class UiShopeeSearchTool extends Tool {
   final UiAutomationService _svc;
   final OverlayService? _overlay;
+
+  static const _shopeePackage = 'com.shopee.vn';
+
   UiShopeeSearchTool(this._svc, [this._overlay]);
 
   @override
@@ -14,154 +17,136 @@ class UiShopeeSearchTool extends Tool {
 
   @override
   String get description =>
-      'Open Shopee, search for a product, and show results.\n\n'
-      'Steps:\n'
-      '1. Launch Shopee app\n'
-      '2. Wait for app to load\n'
-      '3. Tap on search bar to focus it\n'
-      '4. Type the search query\n'
-      '5. Press Enter to search\n'
-      '6. Return screenshot with results\n\n'
-      'Parameters:\n'
-      '- query: the product to search for (e.g., "tương ớt", "iPhone 15")\n\n'
-      'Returns screenshot with search results.\n\n'
-      'Android only. Requires Accessibility Service.';
+      'Search for products on Shopee app using UI automation.\n\n'
+      'Steps: Launch Shopee app → Tap search bar → Type keyword → Submit search.\n'
+      'Returns the search results page status.\n\n'
+      'Requires Accessibility Service enabled. Android only.';
 
   @override
   Map<String, dynamic> get parameters => {
     'type': 'object',
     'properties': {
-      'query': {
+      'keyword': {
         'type': 'string',
-        'description': 'Product to search for (e.g., "tương ớt", "iPhone 15")',
+        'description': 'Search keyword for products',
       },
     },
-    'required': ['query'],
+    'required': ['keyword'],
   };
 
-  Map<String, dynamic>? _findSearchBar(List<dynamic> elements) {
-    for (final e in elements) {
-      if (e is! Map<String, dynamic>) continue;
+  Map<String, dynamic>? _findSearchBarElement(List<dynamic> elements) {
+    for (final el in elements) {
+      final e = el as Map<String, dynamic>;
       final text = (e['text'] as String?)?.toLowerCase() ?? '';
-      final desc = (e['contentDescription'] as String?)?.toLowerCase() ?? '';
-      final resourceId = (e['resourceId'] as String?)?.toLowerCase() ?? '';
-      final cls = (e['className'] as String? ?? '').toLowerCase();
-      final isClickable = e['isClickable'] == true;
+      final desc = (e['description'] as String?)?.toLowerCase() ?? '';
+      final resId = (e['resourceId'] as String?) ?? '';
 
-      final isSearchBar =
-          text.contains('tìm kiếm') ||
+      if (text.contains('tìm') ||
           text.contains('search') ||
-          desc.contains('tìm kiếm') ||
+          text.contains('tim') ||
           desc.contains('search') ||
-          resourceId.contains('search') ||
-          resourceId.contains('edit_text') ||
-          (cls.contains('edittext') && isClickable);
+          resId.contains('search_bar')) {
+        return e;
+      }
+    }
 
-      if (isSearchBar) return e;
+    final textFields = elements.where((e) {
+      final el = e as Map<String, dynamic>;
+      final cl = (el['className'] as String?) ?? '';
+      return cl.contains('EditText');
+    }).toList();
+    if (textFields.isNotEmpty) {
+      return textFields.first as Map<String, dynamic>;
     }
     return null;
   }
 
+  Future<ToolResult> _doSearch(String keyword) async {
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    final allElements = await _svc.findElements(by: 'all');
+    final elements = allElements['elements'] as List<dynamic>? ?? [];
+
+    if (elements.isEmpty) {
+      return ToolResult.error('No elements found on screen');
+    }
+
+    final searchBar = _findSearchBarElement(elements);
+    if (searchBar == null) {
+      return ToolResult.error('Search bar not found on Shopee');
+    }
+
+    final x = (searchBar['centerX'] as num?)?.toDouble();
+    final y = (searchBar['centerY'] as num?)?.toDouble();
+    if (x == null || y == null) {
+      return ToolResult.error('Could not get search bar coordinates');
+    }
+
+    await _svc.tap(x, y);
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    final typeResult = await _svc.typeText(keyword);
+    if (typeResult['success'] != true) {
+      return ToolResult.error(
+        typeResult['message'] as String? ?? 'Failed to type search text',
+      );
+    }
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    await _svc.globalAction('enter');
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    final screenshot = await _svc.screenshot();
+    final hasScreenshot = screenshot['error'] != true;
+
+    return ToolResult.success(
+      jsonEncode({
+        'status': 'search_completed',
+        'keyword': keyword,
+        'message': 'Searched for "$keyword" on Shopee',
+        'screenshot': hasScreenshot ? 'available' : 'unavailable',
+      }),
+    );
+  }
+
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
-    final query = args['query'] as String?;
-    if (query == null || query.isEmpty) {
-      return ToolResult.error('query is required');
+    final keyword = args['keyword'] as String?;
+    if (keyword == null || keyword.isEmpty) {
+      return ToolResult.error('keyword is required');
     }
 
-    _overlay?.show('🔍 Opening Shopee & searching for "$query"...');
+    _overlay?.show('ui_shopee_search: $keyword');
 
-    var r = await _svc.launchApp(search: 'Shopee');
-    if (r['error'] == true) {
-      return ToolResult.error('Failed to launch Shopee: ${r['message']}');
-    }
+    try {
+      final elements = await _svc.findElements(by: 'all');
+      final elementList = elements['elements'] as List<dynamic>? ?? [];
 
-    await Future<void>.delayed(const Duration(milliseconds: 2500));
-
-    // Get all elements
-    final allElements = await _svc.findElements(by: 'all');
-    final elemList = allElements['elements'] as List<dynamic>? ?? [];
-
-    // Find search bar
-    Map<String, dynamic>? searchBar = _findSearchBar(elemList);
-
-    int searchBarX = 720;
-    int searchBarY = 120;
-
-    if (searchBar != null) {
-      searchBarX = (searchBar['centerX'] as int?) ?? 720;
-      searchBarY = (searchBar['centerY'] as int?) ?? 120;
-      _overlay?.show('✅ Found search bar at ($searchBarX, $searchBarY)');
-    }
-
-    // Tap search bar to focus input field
-    _overlay?.show('👆 Tapping search bar...');
-    r = await _svc.tap(searchBarX.toDouble(), searchBarY.toDouble());
-    await Future<void>.delayed(const Duration(milliseconds: 1000));
-
-    // Type the query
-    _overlay?.show('⌨️ Typing "$query"...');
-    r = await _svc.typeText(query);
-
-    // If type fails, retry
-    if (r['success'] != true) {
-      _overlay?.show('⚠️ Retry tapping and typing...');
-      r = await _svc.tap(searchBarX.toDouble(), searchBarY.toDouble());
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      r = await _svc.typeText(query);
-    }
-
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-
-    // Execute search - tap on search bar again to trigger search
-    // This is more reliable than pressing enter
-    _overlay?.show('🔎 Tapping search bar to execute search...');
-
-    // Tap on the search bar to trigger search
-    await _svc.tap(searchBarX.toDouble(), searchBarY.toDouble());
-
-    // Wait for results
-    await Future<void>.delayed(const Duration(milliseconds: 2000));
-
-    // Take screenshot
-    final screenshot = await _svc.screenshot();
-    final elemResult = await _svc.findElements(by: 'all');
-    final elemListFinal = elemResult['elements'] as List<dynamic>? ?? [];
-
-    final summary = StringBuffer();
-    summary.writeln('=== 🔍 Search Results for "$query" ===\n');
-
-    int productCount = 0;
-    for (final e in elemListFinal) {
-      if (e is! Map<String, dynamic>) continue;
-      final text = e['text'] as String?;
-      final desc = e['contentDescription'] as String?;
-      final clickable = e['isClickable'] == true;
-      final cx = e['centerX'];
-      final cy = e['centerY'];
-      final label = text ?? desc ?? '';
-      if (label.isEmpty || !clickable) continue;
-
-      if (productCount < 8) {
-        summary.writeln('• "$label" at ($cx, $cy)');
-        productCount++;
+      bool alreadyOnShopee = false;
+      for (final e in elementList) {
+        final el = e as Map<String, dynamic>;
+        final text = (el['text'] as String?) ?? '';
+        final resId = (el['resourceId'] as String?) ?? '';
+        if (resId.contains('shopee') || text.toLowerCase().contains('shopee')) {
+          alreadyOnShopee = true;
+          break;
+        }
       }
-    }
 
-    if (productCount == 0) {
-      summary.writeln('(No products found - try scrolling down)');
-    }
+      if (alreadyOnShopee) {
+        return _doSearch(keyword);
+      }
 
-    if (screenshot['error'] == true) {
-      return ToolResult.success(summary.toString().trim());
-    }
+      var r = await _svc.launchApp(package_: _shopeePackage);
+      if (r['error'] == true) {
+        return ToolResult.error(
+          r['message'] as String? ?? 'Failed to launch Shopee',
+        );
+      }
 
-    final output = {
-      'type': 'image',
-      'data': screenshot['data'],
-      'mimeType': screenshot['mimeType'] ?? 'image/jpeg',
-      'note': summary.toString().trim(),
-    };
-    return ToolResult.success(jsonEncode(output));
+      return _doSearch(keyword);
+    } catch (e) {
+      return ToolResult.error('Error: $e');
+    }
   }
 }

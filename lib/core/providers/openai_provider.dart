@@ -197,23 +197,23 @@ class OpenAiProvider implements LlmProvider {
             }
           }
 
-          // Always check for Qwen3-style tool_call in content (not just "tool_calls" finish_reason)
+          // Always check for tool_call in content (not just "tool_calls" finish_reason)
           if (accumulatedContent.isNotEmpty &&
               accumulatedContent.contains('<tool_call>')) {
             _log.info(
-              '[Qwen3] Found <tool_call> in content (length=${accumulatedContent.length}), parsing...',
+              'Found <tool_call> in content (length=${accumulatedContent.length}), parsing...',
             );
             final toolCalls = _parseToolCallsFromContent(accumulatedContent);
             _log.info(
-              '[Qwen3] Parsed ${toolCalls.length} tool calls: ${toolCalls.map((t) => t.function.name).join(", ")}',
+              'Parsed ${toolCalls.length} tool calls: ${toolCalls.map((t) => t.function.name).join(", ")}',
             );
             for (final tc in toolCalls) {
-              _log.info('[Qwen3] Yielding toolCallDelta: ${tc.function.name}');
+              _log.info('Yielding toolCallDelta: ${tc.function.name}');
               yield LlmStreamEvent(toolCallDelta: tc);
             }
           } else {
             _log.info(
-              '[Qwen3] No <tool_call> found in content, skipping. Content preview: ${accumulatedContent.substring(0, accumulatedContent.length.clamp(0, 100))}',
+              'No <tool_call> found in content, skipping. Content preview: ${accumulatedContent.substring(0, accumulatedContent.length.clamp(0, 100))}',
             );
           }
 
@@ -685,14 +685,8 @@ class OpenAiProvider implements LlmProvider {
     final usageJson = json['usage'] as Map<String, dynamic>?;
     final usage = usageJson != null ? UsageInfo.fromJson(usageJson) : null;
 
-    // Log response to llm.log
-    final contentLen = content?.length ?? 0;
-    final contentPreview = contentLen > 100
-        ? '${content!.substring(0, 100)}...'
-        : (content ?? '');
-    LlmLogger.response(
-      'finishReason=$finishReason, content=$contentPreview, toolCalls=${toolCalls?.length ?? 0}, usage=$usage',
-    );
+    // Log detailed response
+    _logChatResponse(operation: 'chatCompletion', response: json);
 
     return LlmResponse(
       content: content,
@@ -702,7 +696,7 @@ class OpenAiProvider implements LlmProvider {
     );
   }
 
-  /// One-line summary of the outgoing request (no API keys).
+  /// Detailed logging of the outgoing request and response.
   void _logChatRequest({
     required String operation,
     required String url,
@@ -710,18 +704,41 @@ class OpenAiProvider implements LlmProvider {
     required Map<String, dynamic> body,
   }) {
     try {
-      final encoded = jsonEncode(body);
-      final bytes = utf8.encode(encoded).length;
-      final msgs = body['messages'] as List<dynamic>?;
-      final model = body['model'];
-      final stream = body['stream'];
-      final toolCount = (body['tools'] as List<dynamic>?)?.length ?? 0;
+      // Log detailed request information
       final logMsg =
-          '$operation: POST $url | model=$model | stream=$stream | messages=${msgs?.length ?? 0} | tools=$toolCount | approxBodyBytes=$bytes | apiBase=$apiBase';
-      _log.info(logMsg);
-      LlmLogger.request(logMsg);
+          '''
+$operation: POST $url
+apiBase: $apiBase
+model: ${body['model']}
+stream: ${body['stream']}
+messages: ${jsonEncode(body['messages'])}
+tools: ${jsonEncode(body['tools'])}
+maxTokens: ${body['max_tokens'] ?? body['max_completion_tokens']}
+temperature: ${body['temperature']}
+reasoningEffort: ${body['reasoning_effort']}
+''';
+      _log.info(logMsg.trim());
+      LlmLogger.request(logMsg.trim());
     } catch (err, st) {
-      _log.warning('Failed to log request summary: $err', err, st);
+      _log.warning('Failed to log request details: $err', err, st);
+    }
+  }
+
+  /// Logs detailed response information.
+  void _logChatResponse({
+    required String operation,
+    required dynamic response,
+  }) {
+    try {
+      final logMsg =
+          '''
+$operation: Response
+${jsonEncode(response)}
+''';
+      _log.info(logMsg.trim());
+      LlmLogger.response(logMsg.trim());
+    } catch (err, st) {
+      _log.warning('Failed to log response details: $err', err, st);
     }
   }
 

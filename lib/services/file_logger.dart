@@ -1,77 +1,86 @@
 import 'dart:io';
-import 'package:logging/logging.dart' as logging;
+import 'dart:convert';
+import 'dart:async';
 import 'package:path_provider/path_provider.dart';
 
 class LlmLogger {
-  static LlmLogger? _instance;
-  static File? _logFile;
-  static final _log = logging.Logger('LlmLogger');
-
   static String? _customPath;
-
-  LlmLogger._();
+  static File? _logFile;
 
   static void setCustomPath(String path) {
     _customPath = path;
   }
 
   static Future<void> init() async {
-    if (_instance != null) return;
-
-    _instance = LlmLogger._();
-
     try {
-      if (_customPath != null) {
-        final logDir = Directory(_customPath!);
-        if (!await logDir.exists()) {
-          await logDir.create(recursive: true);
-        }
-        _logFile = File('${logDir.path}/llm.log');
-        _log.info('Using custom log path: ${_logFile!.path}');
+      String logPath;
+      if (_customPath != null && _customPath!.isNotEmpty) {
+        logPath = _customPath!;
       } else {
-        throw Exception('No custom path set');
+        // Fallback to app documents directory
+        final dir = await getApplicationDocumentsDirectory();
+        logPath = '${dir.path}/llm.log';
+      }
+
+      // Ensure directory exists
+      final directory = Directory(
+        logPath.endsWith('.log')
+            ? logPath.substring(0, logPath.lastIndexOf('/'))
+            : logPath,
+      );
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+
+      _logFile = File(logPath);
+      // Ensure file exists
+      if (!await _logFile!.exists()) {
+        await _logFile!.create();
       }
     } catch (e) {
-      // Fallback to app documents directory
-      try {
-        final dir = await getApplicationDocumentsDirectory();
-        final logDir = Directory('${dir.path}/flutterclaw/logs');
-        if (!await logDir.exists()) {
-          await logDir.create(recursive: true);
-        }
-        _logFile = File('${logDir.path}/llm.log');
-        _log.info('Using fallback log path: ${_logFile!.path}');
-      } catch (e2) {
-        _log.severe('Failed to initialize LlmLogger: $e2');
-        return;
-      }
+      // Fallback to console logging if file logging fails
+      print('Failed to initialize LlmLogger: $e');
     }
-
-    // Clear old log on start
-    if (await _logFile!.exists()) {
-      await _logFile!.writeAsString('');
-    }
-
-    _log.info('LlmLogger ready: ${_logFile!.path}');
   }
 
-  static void log(String type, String message) {
+  static Future<Directory> getApplicationDocumentsDirectory() async {
+    if (Platform.isIOS) {
+      // For iOS, use library directory
+      return await getLibraryDirectory();
+    } else if (Platform.isAndroid) {
+      // For Android, use external storage
+      final directory = await getExternalStorageDirectory();
+      return directory!;
+    } else {
+      // For desktop or other platforms
+      return Directory.current;
+    }
+  }
+
+  static Future<void> _writeLog(String message) async {
     if (_logFile == null) return;
 
-    final timestamp = DateTime.now().toIso8601String();
-    final logLine = '[$timestamp] [$type] $message\n';
-
     try {
-      _logFile!.writeAsStringSync(logLine, mode: FileMode.append);
+      final timestamp = DateTime.now().toIso8601String();
+      final logLine = '[$timestamp] $message\n';
+      await _logFile!.writeAsString(logLine, mode: FileMode.append);
     } catch (e) {
-      _log.warning('Failed to write log: $e');
+      // Fallback to console
+      print('LLM LOG: $message');
     }
   }
 
-  static void request(String message) => log('REQUEST', message);
-  static void response(String message) => log('RESPONSE', message);
-  static void error(String message) => log('ERROR', message);
-  static void info(String message) => log('INFO', message);
+  static void request(dynamic msg) {
+    // Fire and forget - don't await to avoid blocking
+    _writeLog(
+      'REQUEST: $msg',
+    ).catchError((e) => print('LlmLogger.request error: $e'));
+  }
 
-  static String? get logPath => _logFile?.path;
+  static void response(dynamic msg) {
+    // Fire and forget - don't await to avoid blocking
+    _writeLog(
+      'RESPONSE: $msg',
+    ).catchError((e) => print('LlmLogger.response error: $e'));
+  }
 }
