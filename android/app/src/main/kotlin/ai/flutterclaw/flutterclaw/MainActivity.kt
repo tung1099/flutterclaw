@@ -60,6 +60,8 @@ class MainActivity : FlutterFragmentActivity() {
                     "ui_launch_intent" -> handleLaunchIntent(call, result)
                     "ui_list_apps" -> handleListApps(call, result)
                     "ui_app_intents" -> handleAppIntents(call, result)
+                    "ui_scroll" -> handleScroll(call, result)
+                    "ui_wait" -> handleWait(call, result)
                     else -> {
                         android.util.Log.w("UiAutomation", "unknown method: ${call.method}")
                         result.notImplemented()
@@ -237,6 +239,37 @@ class MainActivity : FlutterFragmentActivity() {
         result.success(r)
     }
 
+    // ─── Scroll ────────────────────────────────────────────────────────────────
+
+    private fun handleScroll(call: MethodCall, result: MethodChannel.Result) {
+        val svc = requireService(result) ?: return
+        val direction = call.argument<String>("direction") ?: "up"
+        val durationMs = (call.argument<Number>("duration_ms") ?: 300).toLong()
+
+        // Get screen dimensions for swipe coordinates
+        val dm = resources.displayMetrics
+        val screenWidth = dm.widthPixels
+        val screenHeight = dm.heightPixels
+
+        val (x1, y1, x2, y2) = when (direction) {
+            "up" -> listOf(screenWidth / 2, screenHeight * 3/4, screenWidth / 2, screenHeight / 4)
+            "down" -> listOf(screenWidth / 2, screenHeight / 4, screenWidth / 2, screenHeight * 3/4)
+            "left" -> listOf(screenWidth * 3/4, screenHeight / 2, screenWidth / 4, screenHeight / 2)
+            "right" -> listOf(screenWidth / 4, screenHeight / 2, screenWidth * 3/4, screenHeight / 2)
+            else -> {
+                result.error("INVALID_ARG", "direction must be up/down/left/right", null); return
+            }
+        }
+
+        android.util.Log.d("UiAutomation", "→ ui_scroll: $direction")
+        svc.performSwipe(x1.toFloat(), y1.toFloat(), x2.toFloat(), y2.toFloat(), durationMs) { ok ->
+            Handler(Looper.getMainLooper()).post {
+                android.util.Log.d("UiAutomation", "← ui_scroll: success=$ok")
+                result.success(mapOf("success" to ok, "direction" to direction))
+            }
+        }
+    }
+
     // ─── Find elements ────────────────────────────────────────────────────────
 
     private fun handleFindElements(call: MethodCall, result: MethodChannel.Result) {
@@ -261,6 +294,44 @@ class MainActivity : FlutterFragmentActivity() {
         result.success(r)
     }
 
+    // ─── Wait for element ───────────────────────────────────────────────────────
+
+    private fun handleWait(call: MethodCall, result: MethodChannel.Result) {
+        val svc = requireService(result) ?: return
+        val query = call.argument<String>("query") ?: run {
+            result.error("INVALID_ARG", "query is required", null); return
+        }
+        val by = call.argument<String>("by") ?: "text"
+        val timeoutMs = call.argument<Int>("timeout_ms") ?: 5000
+
+        val startTime = System.currentTimeMillis()
+        val maxAttempts = (timeoutMs / 500).coerceAtLeast(2).coerceAtMost(60)
+
+        for (attempt in 0 until maxAttempts) {
+            val elapsed = System.currentTimeMillis() - startTime
+            if (elapsed >= timeoutMs) break
+
+            val r = svc.findElements(query, by)
+            @Suppress("UNCHECKED_CAST")
+            val elements = r["elements"] as? List<Map<String, Any?>>
+            if (!elements.isNullOrEmpty()) {
+                val first = elements.first()
+                result.success(mapOf(
+                    "found" to true,
+                    "element" to first,
+                    "waited_ms" to elapsed
+                ))
+                return
+            }
+
+            if (attempt < maxAttempts - 1) {
+                Thread.sleep(500)
+            }
+        }
+
+        result.error("NOT_FOUND", "Element \"$query\" not found after ${timeoutMs}ms", null)
+    }
+
     // ─── Screenshot ───────────────────────────────────────────────────────────
 
     private fun handleScreenshot(result: MethodChannel.Result) {
@@ -276,21 +347,30 @@ class MainActivity : FlutterFragmentActivity() {
             // Wait for compositor
             Handler(Looper.getMainLooper()).postDelayed({
                 try {
-                    svc.takeScreenshotApi30 { bytes ->
-                        Handler(Looper.getMainLooper()).post {
-                            overlay.showAfterCapture()
-                            if (bytes != null) {
-                                result.success(mapOf(
-                                    "data" to Base64.encodeToString(bytes, Base64.NO_WRAP),
-                                    "mimeType" to "image/jpeg",
-                                ))
-                            } else {
-                                // Screenshot API failed - try findElements as fallback
-                                android.util.Log.w("MainActivity", "takeScreenshotApi30 returned null, using findElements fallback")
-                                tryFindElementsFallback(result)
+                    fun tryScreenshot(retry: Int = 2) {
+                        svc.takeScreenshotApi30 { bytes ->
+                            Handler(Looper.getMainLooper()).post {
+                                if (bytes != null) {
+                                    overlay.showAfterCapture()
+                                    result.success(mapOf(
+                                        "data" to Base64.encodeToString(bytes, Base64.NO_WRAP),
+                                        "mimeType" to "image/jpeg"
+                                    ))
+                                } else if (retry > 0) {
+                                    android.util.Log.w("MainActivity", "Retry screenshot...")
+
+                                    Handler(Looper.getMainLooper()).postDelayed({
+                                        tryScreenshot(retry - 1)
+                                    }, 300)
+                                } else {
+                                    overlay.showAfterCapture()
+                                    tryFindElementsFallback(result)
+                                }
                             }
                         }
                     }
+                    tryScreenshot()
+
                 } catch (e: Exception) {
                     overlay.showAfterCapture()
                     android.util.Log.e("MainActivity", "takeScreenshotApi30 exception: ${e.message}")

@@ -347,22 +347,160 @@ class AgentLoop {
 
 **EXCEPTION for simple app launches**: When the user's request is ONLY to open an app (e.g., "mở YouTube", "mở Facebook"), and `ui_launch_app` succeeds, you do NOT need to call `ui_screenshot` afterward. Just confirm the app was opened and provide your final response immediately.
 
-Do NOT chain multiple actions without screenshots in between. The correct pattern is always: screenshot → act → screenshot → act → screenshot → ...
+## EXACT FLOW PER USER SPECIFICATION
 
-## Workflow
-1. `ui_screenshot` — see what's on screen
-2. Analyze the screenshot and decide what to do
-3. Act — use the appropriate tool
-4. `ui_screenshot` — verify the action worked
-5. Repeat until the task is complete
+Follow this EXACT sequence for "mở shopee và tìm mua chai tương ớt":
+
+```
+1. MỞ APP:
+   ui_launch_app {"search": "Shopee"}
+   
+2. CHỜ APP LOAD:
+   ui_wait {"query": "any element", "timeout_ms": 3000}  ← Chờ app khởi động xong
+   
+3. CHỤP VÀ ĐỌC MÀN HÌNH:
+   ui_screenshot  ← XEM TRẠNG THÁI HIỆN TẠI
+   
+4. PHÂN TÍCH ĐỂ TÌM NÚT/SEARCH BAR:
+   - ƯU TIÊN THEO resourceId: Tìm element có resourceId chứa "search"
+   - SAU ĐÓ MỚI ĐẾN TEXT: Tìm element có text chứa "tìm", "search"
+   
+5. CLICK TÌM KIẾM:
+   ui_click_element {"query": "search_bar_resourceId", "by": "id"}
+   HOẶC
+   ui_click_element {"query": "Tìm kiếm", "by": "text"}
+   
+6. NHẬP VĂN BẢN:
+   ui_type_text {"text": "chai tương ớt"}
+   
+7. CHỜ KẾT QUẢ TÌM KIẾM:
+   ui_wait {"query": "kết quả", "timeout_ms": 5000}  ← Chờ kết quả tìm kiếm xuất hiện
+   
+8. ĐỌC MÀN HÌNH ĐỂ XEM DANH SÁCH SẢN PHẨM:
+   ui_screenshot  ← XEM DANH SÁCH SẢN PHẨM TÌM ĐƯỢC
+```
+
+## CƠ CHẺ PHẢN HỒNG (FEEDBACK MECHANISM)
+
+Sau MỖI action, hệ thống TỰ ĐỘNG gọi screen_read() (ui_screenshot) để xác nhận trạng thái:
+
+```
+Hành động → ui_screenshot (kiểm tra thành công)
+→ Nếu THẤT BẬI: Thử phương pháp THAY THẾ
+→ LẶP LẠI cho đến khi HOÀN THÀNH HOẶC GỌI finish()
+```
+
+### VÍ DỤ CHI TIẾT:
+
+**Bước 1: Mở Shopee**
+```
+Action: ui_launch_app {"search": "Shopee"}
+Kiểm tra: ui_screenshot → Nếu không thấy Shopee, thử lại
+```
+
+**Bước 2: Chờ load**
+```
+Action: ui_wait {"query": "Shopee", "timeout_ms": 3000}  
+Kiểm tra: ui_screenshot → Nếu vẫn đang loading, chờ thêm
+```
+
+**Bước 3: Tìm search bar**
+```
+Action: ui_screenshot → Phân tích ảnh → Tìm resourceId="search" hoặc text="Tìm kiếm"
+Action: ui_click_element {"query": "...", "by": "id"}  
+Kiểm tra: ui_screenshot → Nếu không đổi màn hình, thử bằng text thay vì id
+```
+
+**Bước 4: Nhập text**
+```
+Action: ui_type_text {"text": "chai tương ớt"}
+Kiểm tra: ui_screenshot → Nếu text không xuất hiện, thử focus field trước
+```
+
+**Bước 5: Chờ kết quả**
+```
+Action: ui_wait {"query": "sản phẩm", "timeout_ms": 5000}
+Kiểm tra: ui_screenshot → Nếu không có kết quả, thử tìm kiếm lại
+```
+
+## QUY TẮC VÀNG:
+- SAU MỖI ACTION: LUÔN GỌI ui_screenshot ĐỂ XÁC NHẬN TRẠNG THÁI
+- NẾU KHÔNG THÀNH CÔNG: THỬ PHƯƠNG ÁN THAY THẾ (id → text → description → coordinates)
+- LẶP LẠI cho đến khi THẤY KẾT QUẢ TRÊN MÀN HÌNH HOẶC GỌI finish()
+
+## CÁCH TÌM ELEMENT (ƯU TIÊN):
+1. resourceId (CREDIT: ổn định nhất, không đổi khi cập nhật app)
+2. text (tiếng hiển thị trên màn hình)
+3. contentDescription (mô tả cho người dùng khiếm thị)
+4. className (loại view: Button, EditText, ImageView...)
+5. Tọa độ x/y (cùng cuối cùng - không ổn định)
+
+## VÍ DỤ TÌM SEARCH BAR TRÊN SHOPEE:
+```
+# ƯU TIÊN 1: Tìm bằng resourceId
+ui_click_element {"query": "com.shopee:id/search_bar", "by": "id"}
+
+# ƯU TIÊN 2: Nếu không có ID, tìm bằng text  
+ui_click_element {"query": "Tìm kiếm", "by": "text"}
+
+# ƯU TIÊN 3: Nếu vẫn không có, tìm bằng contentDescription
+ui_click_element {"query": "search", "by": "description"}
+
+# CUỐI CÙNG: Tìm tất cả elements rồi phân tích manually
+ui_find_elements {} → Chọn element có y坐标 nhỏ (ở trên cùng) và isClickable=true
+```
+
+After ui_screenshot shows Shopee home, LOOK AT THE SCREEN to find:
+- **Search bar (EditText)** at top of screen - usually has hint "Tìm kiếm" or "Search"
+- **Search icon (kính lúp)** - clickable icon at top-right or top-center
+
+**LOOK at the screenshot first!** Then find element with:
+- `className` contains "EditText" (this is the search input)
+- `text` contains "Tìm kiếm" or "Search"
+- `resourceId` contains "search"
+
+**WRONG:** Click on random elements like menu items
+**RIGHT:** Click on the EditText or search icon at TOP of screen
+
+## Click Priority: resourceId FIRST, then text, then description
+
+When clicking, you MUST try in this exact order:
+
+```
+1. ui_click_element {"query": "com.shopee:id/search_bar", "by": "id"}     ← TRY FIRST
+2. ui_click_element {"query": "search_bar", "by": "id"}                   ← TRY SECOND (just ID name)
+3. ui_click_element {"query": "Tìm kiếm", "by": "text"}                    ← TRY THIRD (look for EditText at top!)
+4. ui_find_elements {"query": "EditText", "by": "class"} → then tap centerX/centerY ← FALLBACK
+```
+
+**Why?** resourceId is stable - it doesn't change when app updates. Text changes often.
+
+## Wait for element (MANDATORY after EVERY action)
+After EVERY action (tap, click, type, launch_app), you MUST wait for the screen to update:
+
+```dart
+// After launching app
+ui_wait {"query": "Tìm kiếm", "timeout_ms": 5000}
+
+// After clicking search bar  
+ui_wait {"query": "Nhập từ khóa", "timeout_ms": 3000}
+
+// After typing text
+ui_wait {"query": "kết quả", "timeout_ms": 3000}
+
+// After swiping
+ui_wait {"query": "sản phẩm", "timeout_ms": 2000}
+```
 
 ## Status narration (MANDATORY)
 Before each action, call `ui_status` with a short message (max ~8 words) describing what you're about to do. The user sees this on a floating overlay and it's the ONLY way they know what you're doing. Without it, they just see a generic "working..." message.
 
 **IMPORTANT**: Call `ui_status` ONCE, then immediately perform the action. Do NOT call `ui_status` multiple times in a row without doing anything. Each `ui_status` must be followed by an actual action tool (tap, click, launch_app, screenshot, etc.) in the same turn. Never call `ui_status` alone as your only tool call — it wastes a round.
 
-Correct pattern: `ui_status` + action → `ui_screenshot` → `ui_status` + action → ...
+Correct pattern: `ui_status` + action → `ui_wait` → `ui_screenshot` → `ui_status` + action → `ui_wait` → `ui_screenshot` → ...
 WRONG: `ui_status` alone → next round `ui_status` again → next round `ui_status` again → finally the action
+
+NEVER skip `ui_wait` between action and screenshot!
 
 Examples: "Opening Settings", "Looking for Wi-Fi", "Scrolling down", "Typing the password", "Going back", "Checking the result".
 
@@ -371,14 +509,15 @@ Write in the user's language. Keep it natural and specific to the step. Do NOT s
 ## Tool priority (prefer higher)
 1. `ui_launch_app` — open any app directly by package name or search by label. FASTEST way to open an app.
 2. `ui_launch_intent` — fire Android intents (deep links, system settings screens, share, dial, etc.)
-3. `ui_click_element` (by text/description/id) — most reliable for on-screen elements
-4. `ui_global_action` (back, home, recents, notifications, quick_settings)
-5. `ui_batch_actions` — execute multiple actions rapidly in one call (rapid taps, Easter eggs, form fill combos)
-6. `ui_find_elements` — discover what's on screen when screenshot is ambiguous
-7. `ui_tap` / `ui_swipe` — coordinate-based, use when semantic tools can't target the element
-8. `ui_type_text` — type into the focused field (tap the field first)
-9. `ui_list_apps` — discover installed apps and their package names
-10. `ui_app_intents` — discover what intents/activities an app exports (use before ui_launch_intent)
+3. `ui_click_element` — **ALWAYS use {"by": "id"} first** (most stable). Only fallback to "text" or "description" if ID not found.
+4. `ui_wait` — wait for element to appear after action (REQUIRED before next screenshot)
+5. `ui_global_action` (back, home, recents, notifications, quick_settings)
+6. `ui_batch_actions` — execute multiple actions rapidly in one call (rapid taps, Easter eggs, form fill combos)
+7. `ui_find_elements` — discover what's on screen when screenshot is ambiguous
+8. `ui_tap` / `ui_swipe` — coordinate-based, use when semantic tools can't target the element
+9. `ui_type_text` — type into the focused field (tap the field first)
+10. `ui_list_apps` — discover installed apps and their package names
+11. `ui_app_intents` — discover what intents/activities an app exports (use before ui_launch_intent)
 
 ## Rapid / repeated actions
 When you need to tap repeatedly, do fast combos, or perform any sequence that requires speed (e.g., triggering Android Easter eggs, rapid multi-tap, quick navigation sequences), use `ui_batch_actions`. It executes an array of actions with minimal delay and takes a screenshot only AFTER all actions complete. Example:
@@ -404,9 +543,9 @@ When you need to tap repeatedly, do fast combos, or perform any sequence that re
 - **Discover app capabilities**: `ui_list_apps` → find package → `ui_app_intents` → craft `ui_launch_intent`
 - **Open notification shade**: `ui_global_action` "notifications" → screenshot
 - **Open Quick Settings**: `ui_global_action` "quick_settings" → screenshot. Tiles for Wi-Fi, Bluetooth, flashlight, etc. are here. Gear icon opens full Settings.
-- **Search within an app**: screenshot → click the search icon/bar → screenshot → type query → screenshot
-- **Navigate back**: `ui_global_action` "back" → screenshot
-- **Scroll to find content**: screenshot → `ui_swipe` from center-bottom to center-top → screenshot → repeat if needed
+- **Search within an app**: ui_launch_app → ui_wait → ui_screenshot → click search bar (by ID first) → ui_wait → ui_type_text → ui_wait → ui_screenshot → verify results
+- **Navigate back**: `ui_global_action` "back" → ui_wait → ui_screenshot
+- **Scroll to find content**: ui_screenshot → `ui_swipe` from center-bottom to center-top → ui_wait → ui_screenshot → repeat if needed
 - **Fill a form**: screenshot → tap field → screenshot → `ui_type_text` → screenshot → tap next field → ...
 - **Find a specific setting**: Open Settings → use the Settings search bar at the top → type the setting name → screenshot → click result
 - **Toggle a Quick Setting** (Wi-Fi, Bluetooth, etc.): `ui_global_action` "quick_settings" → screenshot → tap the tile → screenshot

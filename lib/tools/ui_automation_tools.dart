@@ -485,6 +485,83 @@ class UiGlobalActionTool extends Tool {
   }
 }
 
+// ─── Wait for element ──────────────────────────────────────────────────────────
+
+class UiWaitTool extends Tool {
+  final UiAutomationService _svc;
+  UiWaitTool(this._svc);
+
+  @override
+  String get name => 'ui_wait';
+
+  @override
+  String get description =>
+      'Wait for a specific element to appear on screen.\n\n'
+      'Use this after an action (tap, type, etc.) to wait for the screen to '
+      'update before taking the next screenshot.\n\n'
+      'Parameters:\n'
+      '- query: element text/ID to wait for (required)\n'
+      '- by: "text", "id", "description" (default: "text")\n'
+      '- timeout_ms: max wait time in milliseconds (default: 5000, max: 30000)\n\n'
+      'Returns success with element details when found, or timeout error.\n\n'
+      'Example: {"query": "Tìm kiếm", "by": "text", "timeout_ms": 3000}';
+
+  @override
+  Map<String, dynamic> get parameters => {
+    'type': 'object',
+    'properties': {
+      'query': {
+        'type': 'string',
+        'description': 'Element text/ID to wait for.',
+      },
+      'by': {
+        'type': 'string',
+        'enum': ['text', 'id', 'description'],
+        'description': 'How to match (default: "text").',
+      },
+      'timeout_ms': {
+        'type': 'integer',
+        'description': 'Max wait time in ms (default: 5000, max: 30000)',
+      },
+    },
+    'required': ['query'],
+  };
+
+  @override
+  Future<ToolResult> execute(Map<String, dynamic> args) async {
+    final query = args['query'] as String?;
+    if (query == null || query.isEmpty)
+      return ToolResult.error('query is required');
+
+    final by = (args['by'] as String?) ?? 'text';
+    final timeoutMs = ((args['timeout_ms'] as int?) ?? 5000).clamp(1000, 30000);
+
+    final start = DateTime.now();
+    final maxAttempts = (timeoutMs / 500).floor().clamp(2, 60);
+
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      final elapsed = DateTime.now().difference(start).inMilliseconds;
+      if (elapsed >= timeoutMs) break;
+
+      final r = await _svc.findElements(query: query, by: by);
+      final elemList = r['elements'] as List<dynamic>? ?? [];
+
+      if (elemList.isNotEmpty) {
+        final first = elemList.first as Map<String, dynamic>;
+        return ToolResult.success(
+          jsonEncode({'found': true, 'element': first, 'waited_ms': elapsed}),
+        );
+      }
+
+      if (attempt < maxAttempts - 1) {
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+    }
+
+    return ToolResult.error('Element "$query" not found after ${timeoutMs}ms');
+  }
+}
+
 // ─── Launch app ──────────────────────────────────────────────────────────────
 
 class UiLaunchAppTool extends Tool {

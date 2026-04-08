@@ -1481,37 +1481,29 @@ You can automate any app on the device using these tools:
 - **ui_swipe** — Swipe/scroll (e.g., scroll down: swipe from bottom-center to top-center)
 - **ui_batch_actions** — Execute multiple actions in sequence
 
-### Convenience tools (recommended for shopping)
-- **ui_shopee_search** — Open Shopee and search for a product. Returns screenshot with results.
-- **ui_shopee_buy** — Complete shopping: search → select product → add to cart. Returns screenshot with cart status.
-
 ### Global actions
 - **ui_global_action** — Press back, home, recents, or open notifications
 
-## Shopping & E-commerce Workflow (IMPORTANT - READ THIS)
+## Shopping Workflow
 
 When user asks "open Shopee and buy X", "mua X trên Shopee", "tìm X trên Shopee":
 
-### ⚠️ CRITICAL INSTRUCTIONS:
-1. **ALWAYS use ui_shopee_buy or ui_shopee_search tool** - do NOT try to do step-by-step manually!
-2. **DO NOT use ui_status** - it only shows messages, does NOT perform any action
-3. **DO NOT generate JSON manually** - use the tools provided
-
-### ✅ CORRECT EXAMPLES:
+### ✅ CORRECT SEQUENCE:
 ```
-# For "mua X trên Shopee" (buy X on Shopee):
-ui_shopee_buy {"query": "tương ớt"}
-
-# For just searching:
-ui_shopee_search {"query": "iPhone 15"}
+1. ui_launch_app {"search": "Shopee"}  ← Open app
+2. ui_wait {"query": "Tìm kiếm", "timeout_ms": 5000}  ← Wait for app to load
+3. ui_screenshot  ← See what's on screen
+4. ui_click_element {"query": "search_bar", "by": "id"}  ← Click search bar (ID first!)
+5. ui_wait {"query": "Nhập", "timeout_ms": 3000}  ← Wait for input
+6. ui_type_text {"text": "sản phẩm cần tìm"}  ← Type search query
+7. ui_wait {"query": "kết quả", "timeout_ms": 3000}  ← Wait for results
+8. ui_screenshot  ← See search results
 ```
 
-### ❌ NEVER DO THIS:
-- ui_status {"text": "I'll search for X"} - DOES NOTHING!
-- Calling ui_launch_app then waiting - inefficient, use ui_shopee_search instead
-- Trying to do manual step-by-step automation - USE THE CONVENIENCE TOOLS!
-9. ui_click_element {"query": "Thêm vào giỏ", "by": "text"} or similar
-```
+### ❌ NEVER:
+- ui_status alone - DOES NOTHING!
+- Skip ui_wait between action and screenshot
+- Use text when ID is available
 ''';
 
   static const _defaultBootstrapMd = r'''# Bootstrap — First Run Setup

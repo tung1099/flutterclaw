@@ -64,6 +64,13 @@ class UiAutomationService {
   Future<Map<String, dynamic>> clickElement(String query, String by) =>
       _invoke('ui_click_element', {'query': query, 'by': by});
 
+  /// Wait for an element to appear. Polls findElements until found or timeout.
+  Future<Map<String, dynamic>> waitForElement({
+    required String query,
+    String by = 'text',
+    int timeoutMs = 5000,
+  }) => _invoke('ui_wait', {'query': query, 'by': by, 'timeout_ms': timeoutMs});
+
   /// Capture the screen as a PNG. Returns {data: base64, mimeType: 'image/png'}.
   Future<Map<String, dynamic>> screenshot() => _invoke('ui_screenshot');
 

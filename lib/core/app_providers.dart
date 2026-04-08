@@ -74,8 +74,6 @@ import 'package:flutterclaw/tools/cron_tools.dart';
 import 'package:flutterclaw/tools/shortcut_tools.dart';
 import 'package:flutterclaw/tools/skill_tools.dart';
 import 'package:flutterclaw/tools/ui_automation_tools.dart';
-import 'package:flutterclaw/tools/ui_shopee_search.dart';
-import 'package:flutterclaw/tools/ui_shopee_buy.dart';
 import 'package:flutterclaw/tools/http_tools.dart';
 import 'package:flutterclaw/tools/web_tools.dart';
 import 'package:flutterclaw/tools/workspace_pick_tools.dart';
@@ -782,6 +780,7 @@ final toolRegistryProvider = Provider<ToolRegistry>((ref) {
   registry.register(UiClickElementTool(uiSvc, uiOverlay));
   registry.register(UiScreenshotTool(uiSvc));
   registry.register(UiGlobalActionTool(uiSvc));
+  registry.register(UiWaitTool(uiSvc));
   registry.register(UiLaunchAppTool(uiSvc));
   registry.register(UiLaunchIntentTool(uiSvc));
   registry.register(UiListAppsTool(uiSvc));
@@ -789,8 +788,6 @@ final toolRegistryProvider = Provider<ToolRegistry>((ref) {
   registry.register(UiBatchActionsTool(uiSvc, uiOverlay));
   registry.register(UiAskUserTool(uiOverlay));
   registry.register(UiStatusTool(uiOverlay));
-  registry.register(UiShopeeSearchTool(uiSvc, uiOverlay));
-  registry.register(UiShopeeBuyTool(uiSvc, uiOverlay));
 
   // Sandbox shell tool (Android: PRoot + Alpine rootfs; iOS: unavailable stub)
   final sandboxSvc = ref.read(sandboxServiceProvider);
