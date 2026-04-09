@@ -116,241 +116,170 @@ class FlutterClawAccessibilityService : AccessibilityService() {
     // ─── Click element ───────────────────────────────────────────────────────
 
     fun clickElement(query: String, by: String): Map<String, Any?> {
-        var rootList: List<AccessibilityNodeInfo> = emptyList()
+        val root = getActiveRoot() ?: return mapOf("success" to false, "message" to "No active window")
+        val allNodes = collectNodes(root, null, "all")
 
-        // ─── Get root windows ─────────────────────────────
+        val isSearchQuery = query.contains("tìm", ignoreCase = true) || 
+                            query.contains("search", ignoreCase = true) || 
+                            query.contains("tim", ignoreCase = true)
+
+        android.util.Log.d("FlutterClaw", "clickElement: ${allNodes.size} nodes, query='$query', by='$by', isSearch=$isSearchQuery")
+
+        // B1: Exact match theo by
+        var matchedNodes = when (by) {
+            "id" -> allNodes.filter { it.viewIdResourceName?.contains(query, true) == true }
+            "text" -> allNodes.filter {
+                it.text?.contains(query, true) == true || it.contentDescription?.contains(query, true) == true
+            }
+            "description" -> allNodes.filter { it.contentDescription?.contains(query, true) == true }
+            "class" -> allNodes.filter { it.className?.contains(query, true) == true }
+            else -> allNodes.filter {
+                it.text?.contains(query, true) == true ||
+                it.contentDescription?.contains(query, true) == true ||
+                it.viewIdResourceName?.contains(query, true) == true
+            }
+        }
+
+        // B2: Nếu là search query → tìm search bar/icon
+        var target: AccessibilityNodeInfo? = null
+        if (matchedNodes.isEmpty() || isSearchQuery) {
+            target = findSearchTarget(allNodes, isSearchQuery)
+            if (target != null) {
+                android.util.Log.d("FlutterClaw", "Found search target: ${target.text ?: target.contentDescription}")
+            }
+        }
+
+        // B3: Dùng exact match nếu có
+        if (target == null && matchedNodes.isNotEmpty()) {
+            target = matchedNodes.firstOrNull { it.isClickable && it.isEnabled }
+                ?: matchedNodes.firstOrNull { it.isEnabled }
+        }
+
+        // B4: Execute click
+        val bounds = android.graphics.Rect()
+        return if (target != null) {
+            target.getBoundsInScreen(bounds)
+            val x = bounds.centerX().toFloat()
+            val y = bounds.centerY().toFloat()
+            android.util.Log.d("FlutterClaw", "Clicking target: ${target.text ?: target.contentDescription} at $x,$y")
+
+            var ok = target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (!ok) {
+                ok = dispatchTap(x, y)
+            }
+
+            mapOf("success" to ok, "method" to "element", "x" to x, "y" to y,
+                "elementText" to (target.text ?: target.contentDescription ?: ""))
+        } else {
+            // KHÔNG fallback lung tung - báo lỗi rõ ràng
+            android.util.Log.d("FlutterClaw", "No element found for query: $query")
+            mapOf("success" to false, "message" to "Element '$query' not found on screen")
+        }
+    }
+
+    private fun findSearchTarget(nodes: List<AccessibilityNodeInfo>, isSearchQuery: Boolean): AccessibilityNodeInfo? {
+        if (!isSearchQuery) return null
+
+        // Tìm trên toàn màn hình thay vì chỉ top 600px - vì search bar có thể ở vị trí khác
+        // Ưu tiên tìm EditText editable
+        val editText = nodes.firstOrNull { node ->
+            val className = node.className?.toString() ?: ""
+            (className.contains("EditText", ignoreCase = true) ||
+                    className.contains("TextInput", ignoreCase = true)) && node.isEnabled
+        }
+        if (editText != null) {
+            android.util.Log.d("FlutterClaw", "Found EditText: ${editText.text}")
+            return editText
+        }
+
+        // Tìm text input editable
+        val editable = nodes.firstOrNull { it.isEditable && it.isEnabled }
+        if (editable != null) {
+            android.util.Log.d("FlutterClaw", "Found editable field")
+            return editable
+        }
+
+        // Tìm icon/biểu tượng search trên toàn màn hình
+        val searchIcon = nodes.firstOrNull { node ->
+            val resId = node.viewIdResourceName ?: ""
+            val desc = node.contentDescription ?: ""
+            val text = node.text ?: ""
+            val className = node.className?.toString() ?: ""
+            
+            // Dùng ignoreCase trong contains
+            ((desc.contains("search", ignoreCase = true) || text.contains("search", ignoreCase = true) || 
+              text.contains("tìm", ignoreCase = true) || text.contains("tìm kiếm", ignoreCase = true)) && node.isClickable && node.isEnabled) ||
+            (className.contains("ImageView") && (desc.isNotEmpty() || text.isNotEmpty()) && 
+             (desc.contains("search", ignoreCase = true) || text.contains("search", ignoreCase = true) || resId.contains("search", ignoreCase = true)))
+        }
+        if (searchIcon != null) {
+            android.util.Log.d("FlutterClaw", "Found search icon: ${searchIcon.contentDescription ?: searchIcon.text}")
+            return searchIcon
+        }
+
+        // Tìm TextView có text "Tìm kiếm" hoặc tương tự
+        val searchText = nodes.firstOrNull { node ->
+            val text = node.text ?: ""
+            val desc = node.contentDescription ?: ""
+            (text.contains("tìm", ignoreCase = true) || text.contains("search", ignoreCase = true) || 
+             desc.contains("tìm", ignoreCase = true) || desc.contains("search", ignoreCase = true)) && node.isClickable
+        }
+        if (searchText != null) return searchText
+
+        // Fallback: tìm container có thể click được gần top màn hình (0-500px)
+        val topClickable = nodes.filter { node ->
+            val bounds = android.graphics.Rect()
+            node.getBoundsInScreen(bounds)
+            bounds.top in 0..500 && node.isClickable && node.isEnabled
+        }.firstOrNull()
+        
+        if (topClickable != null) {
+            android.util.Log.d("FlutterClaw", "Fallback: clicking top element: ${topClickable.contentDescription ?: topClickable.text}")
+            return topClickable
+        }
+
+        android.util.Log.d("FlutterClaw", "No search bar or search icon found on screen")
+        return null
+    }
+
+    private fun getActiveRoot(): AccessibilityNodeInfo? {
         val windows = this.windows
         if (windows != null && windows.isNotEmpty()) {
-            val systemPackages = listOf(
+            val systemPackages = setOf(
                 "com.samsung.android.app.cocktailbarservice",
                 "com.samsung.android.systemui",
                 "com.android.systemui",
                 "com.android.launcher"
             )
-            rootList = windows
+            return windows
                 .mapNotNull { it.root }
-                .filter { root ->
+                .firstOrNull { root ->
                     val pkg = root.packageName?.toString() ?: ""
                     !systemPackages.any { pkg.startsWith(it) }
                 }
         }
-
-        if (rootList.isEmpty()) {
-            val activeRoot = this.rootInActiveWindow
-            if (activeRoot != null) {
-                rootList = listOf(activeRoot)
-            }
-        }
-
-        if (rootList.isEmpty()) {
-            return mapOf("success" to false, "message" to "No active window found")
-        }
-
-        val queryLower = query.lowercase()
-        val isSearchQuery = queryLower.contains("tìm") ||
-                queryLower.contains("search") ||
-                queryLower.contains("tim")
-
-        // ─── Helper: find search bar ──────────────────────
-        fun findSearchBar(nodes: List<AccessibilityNodeInfo>): AccessibilityNodeInfo? {
-            val topNodes = nodes.filter { node ->
-                val bounds = android.graphics.Rect()
-                node.getBoundsInScreen(bounds)
-                bounds.top in 0..500
-            }
-
-            // Ưu tiên icon search
-            val searchIcon = topNodes.firstOrNull { node ->
-                val resId = (node.viewIdResourceName ?: "").lowercase()
-                val desc = (node.contentDescription?.toString() ?: "").lowercase()
-                val text = (node.text?.toString() ?: "").lowercase()
-
-                (resId.contains("search") || desc.contains("search") || text.contains("search") ||
-                        resId.contains("tìm") || desc.contains("tìm")) &&
-                        node.isClickable && node.isEnabled
-            }
-            if (searchIcon != null) return searchIcon
-
-            // EditText (bao gồm cả TextInputEditText, AppCompatEditText)
-            val editText = topNodes.firstOrNull {
-                val className = it.className?.toString() ?: ""
-                (className.contains("EditText", ignoreCase = true) ||
-                        className.contains("TextInputEditText", ignoreCase = true) ||
-                        className.contains("AppCompatEditText", ignoreCase = true)) && it.isEnabled
-            }
-            if (editText != null) return editText
-
-            // Tìm view có inputType (text search)
-            val textInput = topNodes.firstOrNull {
-                it.isEditable && it.isEnabled
-            }
-            if (textInput != null) return textInput
-
-            // Tìm button/clickable đầu tiên ở top (thường là search icon hoặc search bar container)
-            return topNodes.firstOrNull { it.isClickable && it.isEnabled }
-        }
-
-        // ─── Helper: tap search bar position (fallback for custom views) ──────
-        fun tapSearchBarPosition(screenWidth: Int, screenHeight: Int): Boolean {
-            // Search bar Shopee thường ở vị trí center-top, ~100-200px từ top
-            val x = screenWidth / 2f
-            val y = screenHeight * 0.08f // ~8% từ top
-
-            android.util.Log.d("FlutterClaw", "tapSearchBarPosition: $x, $y")
-            return dispatchTap(x, y)
-        }
-
-        // ─── MAIN LOOP ────────────────────────────────────
-        for (root in rootList) {
-            val allNodes = collectNodes(root, null, "all")
-
-            android.util.Log.d(
-                "FlutterClaw",
-                "clickElement: ${allNodes.size} nodes, query='$query'"
-            )
-
-            var matchedNodes: List<AccessibilityNodeInfo> = emptyList()
-
-            // ─── Match logic ───────────────────────────────
-            matchedNodes = when {
-                by == "id" || by == "text" -> {
-                    allNodes.filter {
-                        it.viewIdResourceName?.contains(query, true) == true
-                    }.ifEmpty {
-                        allNodes.filter {
-                            it.text?.toString()?.contains(query, true) == true ||
-                                    it.contentDescription?.toString()?.contains(query, true) == true
-                        }
-                    }
-                }
-
-                by == "class" -> {
-                    allNodes.filter {
-                        it.className?.contains(query, true) == true
-                    }
-                }
-
-                else -> {
-                    collectNodes(root, query, by)
-                }
-            }
-
-            // ─── Nếu search → tìm search bar ───────────────
-            val finalCandidates =
-                if (matchedNodes.isEmpty() && isSearchQuery) {
-                    findSearchBar(allNodes)?.let { listOf(it) } ?: emptyList()
-                } else matchedNodes
-
-            // 🔥 FORCE TAP CHO SEARCH (fix Shopee)
-            if (isSearchQuery) {
-                android.util.Log.d("FlutterClaw", "Force tap search area")
-
-                val rootBounds = android.graphics.Rect()
-                root.getBoundsInScreen(rootBounds)
-
-                val x = rootBounds.centerX().toFloat()
-                val y = 180f  // 👈 chỉnh nếu cần
-
-                val ok = dispatchTap(x, y)
-
-                return mapOf(
-                    "success" to ok,
-                    "method" to "force_search_tap",
-                    "x" to x,
-                    "y" to y
-                )
-            }
-
-            var clickable = finalCandidates.firstOrNull {
-                it.isClickable && it.isEnabled
-            } ?: finalCandidates.firstOrNull { it.isEnabled }
-
-            // ─── Fallback: tap theo vị trí cố định cho search ─────────────
-            if (clickable == null && isSearchQuery) {
-                android.util.Log.d("FlutterClaw", "Search query but no element found → fallback position")
-                val dm = resources?.displayMetrics
-                val screenWidth = dm?.widthPixels ?: 1440
-                val screenHeight = dm?.heightPixels ?: 2960
-
-                // Try tapping search bar position
-                val posOk = tapSearchBarPosition(screenWidth, screenHeight)
-                if (posOk) {
-                    return mapOf(
-                        "success" to true,
-                        "method" to "fallback_search_position",
-                        "x" to (screenWidth / 2f),
-                        "y" to (screenHeight * 0.08f),
-                        "note" to "Tapped at estimated search bar position"
-                    )
-                }
-            }
-
-            // ─── CLICK ─────────────────────────────────────
-            if (clickable != null) {
-                val serialized = serializeNode(clickable, 0)
-
-                val bounds = android.graphics.Rect()
-                clickable.getBoundsInScreen(bounds)
-
-                val x = bounds.centerX().toFloat()
-                val y = bounds.centerY().toFloat()
-
-                android.util.Log.d(
-                    "FlutterClaw",
-                    "clickElement: clicking at $x,$y"
-                )
-
-                var ok = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-
-                // 🔥 fallback gesture nếu ACTION_CLICK fail
-                if (!ok) {
-                    android.util.Log.d("FlutterClaw", "ACTION_CLICK failed → gesture tap")
-                    ok = dispatchTap(x, y)
-                }
-
-                clickable.recycle()
-
-                return mapOf(
-                    "success" to ok,
-                    "method" to if (ok) "element" else "gesture",
-                    "x" to x,
-                    "y" to y,
-                    "element" to serialized
-                )
-            }
-        }
-
-        // ─── FINAL FALLBACK (QUAN TRỌNG) ──────────────────
-        android.util.Log.d("FlutterClaw", "Fallback: tap top center")
-
-        val rootBounds = android.graphics.Rect()
-        rootList.first().getBoundsInScreen(rootBounds)
-
-        val x = rootBounds.centerX().toFloat()
-        val y = 150f
-
-        val ok = dispatchTap(x, y)
-
-        return mapOf(
-            "success" to ok,
-            "method" to "fallback_top_area",
-            "x" to x,
-            "y" to y
-        )
+        return this.rootInActiveWindow
     }
 
     // ─── Global actions ──────────────────────────────────────────────────────
 
     fun doGlobalAction(action: String): Boolean {
-        val code = when (action) {
-            "back" -> GLOBAL_ACTION_BACK
-            "home" -> GLOBAL_ACTION_HOME
-            "recents" -> GLOBAL_ACTION_RECENTS
-            "notifications" -> GLOBAL_ACTION_NOTIFICATIONS
-            "quick_settings" -> GLOBAL_ACTION_QUICK_SETTINGS
-            else -> return false
+        return when (action) {
+            "back" -> performGlobalAction(GLOBAL_ACTION_BACK)
+            "home" -> performGlobalAction(GLOBAL_ACTION_HOME)
+            "recents" -> performGlobalAction(GLOBAL_ACTION_RECENTS)
+            "notifications" -> performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+            "quick_settings" -> performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+            "enter" -> {
+                // Simulate pressing Enter/Go button - tap near bottom where keyboard's search button appears
+                val dm = resources.displayMetrics
+                val cx = dm.widthPixels / 2f
+                val cy = dm.heightPixels * 0.85f // Near bottom - keyboard action button area
+                android.util.Log.d("FlutterClaw", "doGlobalAction enter: tapping at ($cx, $cy)")
+                return dispatchTap(cx, cy)
+            }
+            else -> false
         }
-        return performGlobalAction(code)
     }
 
     // ─── Screenshot (API 30+) ────────────────────────────────────────────────

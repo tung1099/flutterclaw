@@ -210,7 +210,32 @@ class UiTypeTextTool extends Tool {
       return ToolResult.error('text is required');
 
     _overlay?.showTypeFeedback(text);
-    final r = await _svc.typeText(text);
+    var r = await _svc.typeText(text);
+
+    if (r['success'] == false &&
+        r['message'] == 'No focused input field. Tap the field first.') {
+      final elements = await _svc.findElements(by: 'all');
+      final elemList = elements['elements'] as List<dynamic>? ?? [];
+
+      for (final e in elemList) {
+        if (e is! Map<String, dynamic>) continue;
+        final className = e['className'] as String? ?? '';
+        if (className.contains('EditText') || className.contains('TextInput')) {
+          final centerX = e['centerX'];
+          final centerY = e['centerY'];
+          if (centerX != null && centerY != null) {
+            await _svc.tap(
+              (centerX as num).toDouble(),
+              (centerY as num).toDouble(),
+            );
+            await Future.delayed(const Duration(milliseconds: 300));
+            r = await _svc.typeText(text);
+            break;
+          }
+        }
+      }
+    }
+
     if (r['error'] == true)
       return ToolResult.error(
         r['message'] as String? ?? r['code'] as String? ?? 'Failed',
@@ -454,7 +479,8 @@ class UiGlobalActionTool extends Tool {
       '- home: press the Home button\n'
       '- recents: open the Recents/Overview screen\n'
       '- notifications: pull down the notification shade\n'
-      '- quick_settings: pull down Quick Settings\n\n'
+      '- quick_settings: pull down Quick Settings\n'
+      '- enter: press Enter key to submit search (or tap the search button on keyboard)\n\n'
       'Requires Accessibility Service. Android only.';
 
   @override
@@ -463,7 +489,14 @@ class UiGlobalActionTool extends Tool {
     'properties': {
       'action': {
         'type': 'string',
-        'enum': ['back', 'home', 'recents', 'notifications', 'quick_settings'],
+        'enum': [
+          'back',
+          'home',
+          'recents',
+          'notifications',
+          'quick_settings',
+          'enter',
+        ],
         'description': 'The global action to perform.',
       },
     },

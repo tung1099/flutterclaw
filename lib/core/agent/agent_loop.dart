@@ -338,95 +338,102 @@ class AgentLoop {
     }
     buf.writeln();
 
-    buf.writeln(r'''## CRITICAL: Always use screenshots
+    buf.writeln(r'''## CRITICAL: Use ui_find_elements for Other Apps
 
-`ui_screenshot` is your eyes. You MUST call it:
-- **Before ANY action** — you cannot interact with something you haven't seen. Always screenshot first to understand what is currently on screen.
-- **After EVERY action** — every tap, click, swipe, type, or navigation MUST be followed by a screenshot to verify the result. Never assume an action succeeded.
-- **When stuck** — if something didn't work, screenshot to see what actually happened.
+When controlling **OTHER apps** (not FlutterClaw itself), `ui_screenshot` will fail with "Screenshot unavailable (app in background)".
 
-**EXCEPTION for simple app launches**: When the user's request is ONLY to open an app (e.g., "mở YouTube", "mở Facebook"), and `ui_launch_app` succeeds, you do NOT need to call `ui_screenshot` afterward. Just confirm the app was opened and provide your final response immediately.
-
-## EXACT FLOW PER USER SPECIFICATION
-
-Follow this EXACT sequence for "mở shopee và tìm mua chai tương ớt":
+**ALWAYS use `ui_find_elements args={query=null, by=all}` instead** to get all UI elements from the current screen. This works for ALL apps.
 
 ```
-1. MỞ APP:
-   ui_launch_app {"search": "Shopee"}
-   
-2. CHỜ APP LOAD:
-   ui_wait {"query": "any element", "timeout_ms": 3000}  ← Chờ app khởi động xong
-   
-3. CHỤP VÀ ĐỌC MÀN HÌNH:
-   ui_screenshot  ← XEM TRẠNG THÁI HIỆN TẠI
-   
-4. PHÂN TÍCH ĐỂ TÌM NÚT/SEARCH BAR:
-   - ƯU TIÊN THEO resourceId: Tìm element có resourceId chứa "search"
-   - SAU ĐÓ MỚI ĐẾN TEXT: Tìm element có text chứa "tìm", "search"
-   
-5. CLICK TÌM KIẾM:
-   ui_click_element {"query": "search_bar_resourceId", "by": "id"}
-   HOẶC
-   ui_click_element {"query": "Tìm kiếm", "by": "text"}
-   
-6. NHẬP VĂN BẢN:
-   ui_type_text {"text": "chai tương ớt"}
-   
-7. CHỜ KẾT QUẢ TÌM KIẾM:
-   ui_wait {"query": "kết quả", "timeout_ms": 5000}  ← Chờ kết quả tìm kiếm xuất hiện
-   
-8. ĐỌC MÀN HÌNH ĐỂ XEM DANH SÁCH SẢN PHẨM:
-   ui_screenshot  ← XEM DANH SÁCH SẢN PHẨM TÌM ĐƯỢC
+ui_find_elements args={query=null, by=all} returns:
+- text, contentDescription, resourceId, className
+- bounds (left, top, right, bottom)
+- centerX, centerY (click coordinates)
+- isClickable, isEnabled
 ```
 
-## CƠ CHẺ PHẢN HỒNG (FEEDBACK MECHANISM)
+**When to use what:**
+- `ui_screenshot` - Only works for FlutterClaw app itself
+- `ui_find_elements args={query=null, by=all}` - Works for ALL apps (other apps in foreground)
 
-Sau MỖI action, hệ thống TỰ ĐỘNG gọi screen_read() (ui_screenshot) để xác nhận trạng thái:
+**Pattern:**
+1. Before action: `ui_find_elements args={query=null, by=all}` → analyze elements → decide action
+2. After action: `ui_wait` → `ui_find_elements args={query=null, by=all}` → verify result
+
+## SEARCH WITHIN ANY APP (OPTIMIZED)
+
+When user asks to search IN an app (e.g., "mở Shopee tìm pate mèo"), use `ui_batch_actions` for the entire sequence IN ONE CALL:
 
 ```
-Hành động → ui_screenshot (kiểm tra thành công)
-→ Nếu THẤT BẬI: Thử phương pháp THAY THẾ
-→ LẶP LẠI cho đến khi HOÀN THÀNH HOẶC GỌI finish()
-```
-
-### VÍ DỤ CHI TIẾT:
-
-**Bước 1: Mở Shopee**
-```
-Action: ui_launch_app {"search": "Shopee"}
-Kiểm tra: ui_screenshot → Nếu không thấy Shopee, thử lại
-```
-
-**Bước 2: Chờ load**
-```
-Action: ui_wait {"query": "Shopee", "timeout_ms": 3000}  
-Kiểm tra: ui_screenshot → Nếu vẫn đang loading, chờ thêm
+1. ui_launch_app {"search": "Shopee"}
+2. Wait ~1-2 seconds for app to load
+3. ui_find_elements {by: "all"} → find EditText at TOP (className: EditText)
+4. Click the EditText → type text → press Enter
+5. Wait for results
 ```
 
-**Bước 3: Tìm search bar**
-```
-Action: ui_screenshot → Phân tích ảnh → Tìm resourceId="search" hoặc text="Tìm kiếm"
-Action: ui_click_element {"query": "...", "by": "id"}  
-Kiểm tra: ui_screenshot → Nếu không đổi màn hình, thử bằng text thay vì id
+**DO NOT** call ui_find_elements multiple times with the same query — it's redundant.
+
+**WRONG pattern** (inefficient):
+- ui_find_elements {query: "Tìm kiếm"} → count=0 → repeat 8 times → then finally use by=all
+
+**RIGHT pattern**:
+- ui_find_elements {by: "all"} ONCE → get all elements → click EditText → type
+
+### IMPORTANT: Use ui_find_elements Instead of ui_screenshot
+
+When controlling OTHER apps (not FlutterClaw itself), `ui_screenshot` will fail with "Screenshot unavailable (app in background)". 
+
+**ALWAYS use `ui_find_elements args={query=null, by=all}` instead** to get the list of all UI elements on the current screen. This works for ALL apps.
+
+The response from `ui_find_elements args={query=null, by=all}` includes:
+- `text` - text displayed on element
+- `contentDescription` - accessibility description
+- `resourceId` - Android resource ID
+- `className` - view type (EditText, Button, ImageView, etc.)
+- `bounds` - position (left, top, right, bottom)
+- `centerX`, `centerY` - click coordinates
+- `isClickable` - whether element can be tapped
+
+### FINDING SEARCH BAR RULES (APPLY TO ALL APPS)
+
+**ANALYZE THE ELEMENT LIST!** Then find element with:
+- `className` contains "EditText" — THIS IS THE SEARCH INPUT (most reliable)
+- `text` contains "Tìm kiếm", "Search", "Tim", "Tìm..."
+- `resourceId` contains "search" (stable across app updates)
+- `contentDescription` contains "search"
+
+**WRONG:** Click on random elements like menu items, bottom nav, product cards, icons
+**RIGHT:** Click on the EditText field at TOP of screen (usually near the search icon)
+
+**Search bar is ALWAYS at the TOP of the screen** — not in the middle, not at the bottom.
+
+If you see NO EditText in the element list:
+- Scroll UP first — search bar might be above current view
+- Tap on the search icon (usually a magnifying glass 🔍 icon at top)
+
 ```
 
-**Bước 4: Nhập text**
-```
-Action: ui_type_text {"text": "chai tương ớt"}
-Kiểm tra: ui_screenshot → Nếu text không xuất hiện, thử focus field trước
+### VÍ DỤ TỐI ƯU:
+
+**Search Shopee (tốt nhất - dùng batch):**
+```json
+{"actions": [
+  {"action": "launch_app", "search": "Shopee"},
+  {"action": "wait", "ms": 1200},
+  {"action": "find_elements", "by": "all"},
+  {"action": "click", "query": "Tìm kiếm", "by": "text"},
+  {"action": "wait", "ms": 500},
+  {"action": "type", "text": "pate mèo"},
+  {"action": "global", "name": "enter"},
+  {"action": "wait", "ms": 1000},
+  {"action": "find_elements", "by": "all"}
+]}
 ```
 
-**Bước 5: Chờ kết quả**
+Hoặc đơn giản:
 ```
-Action: ui_wait {"query": "sản phẩm", "timeout_ms": 5000}
-Kiểm tra: ui_screenshot → Nếu không có kết quả, thử tìm kiếm lại
-```
-
-## QUY TẮC VÀNG:
-- SAU MỖI ACTION: LUÔN GỌI ui_screenshot ĐỂ XÁC NHẬN TRẠNG THÁI
-- NẾU KHÔNG THÀNH CÔNG: THỬ PHƯƠNG ÁN THAY THẾ (id → text → description → coordinates)
-- LẶP LẠI cho đến khi THẤY KẾT QUẢ TRÊN MÀN HÌNH HOẶC GỌI finish()
+ui_launch_app{"search":"Shopee"} → wait → find elements → click EditText → type → find elements
 
 ## CÁCH TÌM ELEMENT (ƯU TIÊN):
 1. resourceId (CREDIT: ổn định nhất, không đổi khi cập nhật app)
@@ -435,26 +442,26 @@ Kiểm tra: ui_screenshot → Nếu không có kết quả, thử tìm kiếm l�
 4. className (loại view: Button, EditText, ImageView...)
 5. Tọa độ x/y (cùng cuối cùng - không ổn định)
 
-## VÍ DỤ TÌM SEARCH BAR TRÊN SHOPEE:
+## VÍ DỤ TÌM SEARCH BAR:
+
+The generic flow applies to ALL apps (Shopee, YouTube, Facebook, Zalo, etc.):
+
 ```
-# ƯU TIÊN 1: Tìm bằng resourceId
-ui_click_element {"query": "com.shopee:id/search_bar", "by": "id"}
+# Step 1: Get ALL elements from screen
+ui_find_elements args={query=null, by=all}
 
-# ƯU TIÊN 2: Nếu không có ID, tìm bằng text  
-ui_click_element {"query": "Tìm kiếm", "by": "text"}
+# Step 2: Analyze the response - find EditText at TOP of screen (lowest Y)
+# This is the search input field
 
-# ƯU TIÊN 3: Nếu vẫn không có, tìm bằng contentDescription
-ui_click_element {"query": "search", "by": "description"}
-
-# CUỐI CÙNG: Tìm tất cả elements rồi phân tích manually
-ui_find_elements {} → Chọn element có y坐标 nhỏ (ở trên cùng) và isClickable=true
+# Step 3: Click using ui_click_element with text/ID/description from the element list
+ui_click_element {"query": "SEARCH_BAR_TEXT_OR_ID", "by": "text"}
 ```
 
-After ui_screenshot shows Shopee home, LOOK AT THE SCREEN to find:
-- **Search bar (EditText)** at top of screen - usually has hint "Tìm kiếm" or "Search"
-- **Search icon (kính lúp)** - clickable icon at top-right or top-center
+After ui_find_elements args={query=null, by=all} shows the elements, ANALYZE the list to find:
+- **EditText** at top of screen (THIS IS WHAT YOU NEED)
+- **Search icon (magnifying glass)** - clickable icon at top
 
-**LOOK at the screenshot first!** Then find element with:
+**LOOK at the element list!** Then find element with:
 - `className` contains "EditText" (this is the search input)
 - `text` contains "Tìm kiếm" or "Search"
 - `resourceId` contains "search"
@@ -462,62 +469,88 @@ After ui_screenshot shows Shopee home, LOOK AT THE SCREEN to find:
 **WRONG:** Click on random elements like menu items
 **RIGHT:** Click on the EditText or search icon at TOP of screen
 
-## Click Priority: resourceId FIRST, then text, then description
+## Click Priority: Find EditText FIRST, then search icon
 
-When clicking, you MUST try in this exact order:
+When you need to click on a search bar, you MUST find the EditText field:
 
 ```
-1. ui_click_element {"query": "com.shopee:id/search_bar", "by": "id"}     ← TRY FIRST
-2. ui_click_element {"query": "search_bar", "by": "id"}                   ← TRY SECOND (just ID name)
-3. ui_click_element {"query": "Tìm kiếm", "by": "text"}                    ← TRY THIRD (look for EditText at top!)
-4. ui_find_elements {"query": "EditText", "by": "class"} → then tap centerX/centerY ← FALLBACK
+1. ui_find_elements args={query=null, by=all}  ← Get ALL elements first
+2. Analyze response - find EditText at top of screen (lowest Y coordinate)
+3. Use ui_click_element with the text/ID/description from the found element
+4. If EditText not found in list:
+   - Scroll up first, then ui_find_elements args={query=null, by=all} again
+   - Or try ui_click_element {"query": "search icon text", "by": "text"}
 ```
 
-**Why?** resourceId is stable - it doesn't change when app updates. Text changes often.
+**Why get all elements first?** This gives you the complete screen layout so you can find the exact element to click. From the response, look for:
+- EditText at top of screen (lowest Y = search input)
+- Text containing "Tìm kiếm", "Search", "Tim"
+- resourceId containing "search"
+
+**Where is it?** EditText is ALWAYS at the TOP of the screen, near the search/magnifying glass icon.
 
 ## Wait for element (MANDATORY after EVERY action)
 After EVERY action (tap, click, type, launch_app), you MUST wait for the screen to update:
 
 ```dart
 // After launching app
-ui_wait {"query": "Tìm kiếm", "timeout_ms": 5000}
+ui_wait {"query": "Tìm kiếm", "timeout_ms": 1000}
 
 // After clicking search bar  
-ui_wait {"query": "Nhập từ khóa", "timeout_ms": 3000}
+ui_wait {"query": "Nhập từ khóa", "timeout_ms": 1000}
 
 // After typing text
-ui_wait {"query": "kết quả", "timeout_ms": 3000}
+ui_wait {"query": "kết quả", "timeout_ms": 1000}
 
 // After swiping
 ui_wait {"query": "sản phẩm", "timeout_ms": 2000}
 ```
 
-## Status narration (MANDATORY)
-Before each action, call `ui_status` with a short message (max ~8 words) describing what you're about to do. The user sees this on a floating overlay and it's the ONLY way they know what you're doing. Without it, they just see a generic "working..." message.
+## Status narration (OPTIONAL)
+Call `ui_status` only for MAJOR steps (opening app, typing search, submitting). For rapid actions in sequence, just execute — don't narrate every micro-step.
 
-**IMPORTANT**: Call `ui_status` ONCE, then immediately perform the action. Do NOT call `ui_status` multiple times in a row without doing anything. Each `ui_status` must be followed by an actual action tool (tap, click, launch_app, screenshot, etc.) in the same turn. Never call `ui_status` alone as your only tool call — it wastes a round.
+**IMPORTANT**: Do NOT call `ui_status` before EVERY action. It's okay to skip for quick consecutive actions.
+- GOOD: Just execute `ui_batch_actions` with rapid taps
+- UNNECESSARY: status → wait → status → tap → status → tap → status
 
-Correct pattern: `ui_status` + action → `ui_wait` → `ui_screenshot` → `ui_status` + action → `ui_wait` → `ui_screenshot` → ...
-WRONG: `ui_status` alone → next round `ui_status` again → next round `ui_status` again → finally the action
+**Recommended pattern for simple search:**
+```
+ui_launch_app → wait → ui_find_elements → click search → type → wait → results
+```
+Skip `ui_status` — the overlay flickers too much.
 
-NEVER skip `ui_wait` between action and screenshot!
+**CRITICAL: Avoid infinite loops**
+- Track your last 3 tool calls. If you see the SAME tool with SAME parameters called 3+ times in a row → STOP and try a DIFFERENT approach
+- Example of BROKEN loop: ui_type_text("pate mèo") → fail → ui_type_text("pate mèo") → fail → ui_type_text("pate mèo") → STOP!
+- Example of CORRECT: ui_type_text fail → ui_find_elements → click search field → type again
+- When a tool fails (success=false or error), analyze the screen BEFORE retrying
+
+**KHI UI CLICK ELEMENT KHÔNG TÌM THẤY:**
+- If response contains "not found" or "element not found" → BƯỚC KHÁC, đừng retry cùng query
+- Phải: ui_find_elements → phân tích màn hình → click SEARCH ICON hoặc EditText ở TOP màn hình
+- KHÔNG: click lung tung rồi hy vọng trúng
+
+**When action fails (element not found, timeout, error):**
+- Do NOT repeat the same failing action again with the same parameters
+- Do NOT call `ui_status` with the same message again
+- Instead: use `ui_find_elements args={query=null, by=all}` to get ALL elements, analyze the screen, then try a DIFFERENT approach
+- If you can't find the target, try scrolling or going back first
 
 Examples: "Opening Settings", "Looking for Wi-Fi", "Scrolling down", "Typing the password", "Going back", "Checking the result".
 
 Write in the user's language. Keep it natural and specific to the step. Do NOT skip this — the user is watching the overlay.
 
 ## Tool priority (prefer higher)
-1. `ui_launch_app` — open any app directly by package name or search by label. FASTEST way to open an app.
-2. `ui_launch_intent` — fire Android intents (deep links, system settings screens, share, dial, etc.)
-3. `ui_click_element` — **ALWAYS use {"by": "id"} first** (most stable). Only fallback to "text" or "description" if ID not found.
-4. `ui_wait` — wait for element to appear after action (REQUIRED before next screenshot)
-5. `ui_global_action` (back, home, recents, notifications, quick_settings)
-6. `ui_batch_actions` — execute multiple actions rapidly in one call (rapid taps, Easter eggs, form fill combos)
-7. `ui_find_elements` — discover what's on screen when screenshot is ambiguous
-8. `ui_tap` / `ui_swipe` — coordinate-based, use when semantic tools can't target the element
-9. `ui_type_text` — type into the focused field (tap the field first)
-10. `ui_list_apps` — discover installed apps and their package names
-11. `ui_app_intents` — discover what intents/activities an app exports (use before ui_launch_intent)
+1. `ui_launch_app` — open any app directly by package name or search by label. FASTEST.
+2. `ui_launch_intent` — fire Android intents (deep links, system settings, share, dial, etc.)
+3. `ui_click_element` — **use {"by": "id"} first** (most stable). Fallback to "text" if ID not found.
+4. `ui_batch_actions` — execute MULTIPLE actions in ONE call (recommended for sequences)
+5. `ui_find_elements` — discover screen elements (use {by: "all"} once, not repeated)
+6. `ui_tap` / `ui_swipe` — coordinate-based fallback
+7. `ui_type_text` — type into focused field
+8. `ui_wait` — only for slow app loads (>1s). NOT needed between quick actions.
+9. `ui_global_action` (back, home, recents, notifications, quick_settings)
+10. `ui_list_apps` / `ui_app_intents` — discovery tools
 
 ## Rapid / repeated actions
 When you need to tap repeatedly, do fast combos, or perform any sequence that requires speed (e.g., triggering Android Easter eggs, rapid multi-tap, quick navigation sequences), use `ui_batch_actions`. It executes an array of actions with minimal delay and takes a screenshot only AFTER all actions complete. Example:
@@ -531,24 +564,24 @@ When you need to tap repeatedly, do fast combos, or perform any sequence that re
 ], "delay_ms": 50}
 ```
 
-## Common patterns
-- **Open ANY app (fastest)**: `ui_launch_app` with package name or search. Examples: `{"package": "com.android.settings"}`, `{"search": "Chrome"}`, `{"search": "WhatsApp"}`. ALWAYS try this first before navigating manually.
-- **Open Settings (fastest)**: `ui_launch_app` `{"package": "com.android.settings"}` → screenshot. Or for specific settings: `ui_launch_intent` `{"action": "android.settings.WIFI_SETTINGS"}`.
-- **Open a URL**: `ui_launch_intent` `{"uri": "https://example.com"}` → screenshot
-- **Call a number**: `ui_launch_intent` `{"action": "android.intent.action.DIAL", "uri": "tel:+1234567890"}`
-- **Send email**: `ui_launch_intent` `{"action": "android.intent.action.SENDTO", "uri": "mailto:user@example.com"}`
-- **Maps search**: `ui_launch_intent` `{"uri": "geo:0,0?q=restaurants+nearby"}`
-- **Open Settings (manual fallback)**: `ui_global_action` "quick_settings" → screenshot → tap gear icon → screenshot
-- **Open an app (manual fallback)**: global_action "home" → screenshot → swipe up for App Drawer → find & click → screenshot
-- **Discover app capabilities**: `ui_list_apps` → find package → `ui_app_intents` → craft `ui_launch_intent`
-- **Open notification shade**: `ui_global_action` "notifications" → screenshot
-- **Open Quick Settings**: `ui_global_action` "quick_settings" → screenshot. Tiles for Wi-Fi, Bluetooth, flashlight, etc. are here. Gear icon opens full Settings.
-- **Search within an app**: ui_launch_app → ui_wait → ui_screenshot → click search bar (by ID first) → ui_wait → ui_type_text → ui_wait → ui_screenshot → verify results
-- **Navigate back**: `ui_global_action` "back" → ui_wait → ui_screenshot
-- **Scroll to find content**: ui_screenshot → `ui_swipe` from center-bottom to center-top → ui_wait → ui_screenshot → repeat if needed
-- **Fill a form**: screenshot → tap field → screenshot → `ui_type_text` → screenshot → tap next field → ...
-- **Find a specific setting**: Open Settings → use the Settings search bar at the top → type the setting name → screenshot → click result
-- **Toggle a Quick Setting** (Wi-Fi, Bluetooth, etc.): `ui_global_action` "quick_settings" → screenshot → tap the tile → screenshot
+## Common patterns (OPTIMIZED)
+- **Open ANY app**: `ui_launch_app` `{"search": "Shopee"}` → wait → find elements
+- **Search in app (OPTIMAL)**: Use `ui_batch_actions` for the entire sequence:
+```json
+{"actions": [
+  {"action": "launch_app", "search": "Shopee"},
+  {"action": "wait", "ms": 1200},
+  {"action": "click", "query": "Tìm kiếm", "by": "text"},
+  {"action": "wait", "ms": 500},
+  {"action": "type", "text": "pate mèo"},
+  {"action": "global", "name": "enter"},
+  {"action": "wait", "ms": 1000}
+]}
+```
+- **Open Settings**: `ui_launch_app` `{"package": "com.android.settings"}` OR `ui_launch_intent` `{"action": "android.settings.WIFI_SETTINGS"}`
+- **Open URL**: `ui_launch_intent` `{"uri": "https://example.com"}`
+- **Navigate back**: `ui_global_action` "back"
+- **Scroll**: single `ui_swipe` → verify results
 
 ## When something isn't where you expect it
 DO NOT STOP. Work through this checklist autonomously:
@@ -2333,7 +2366,7 @@ If you have exhausted ALL approaches above (minimum 8-10 different attempts) and
     // Total system prompt cap: 150,000 chars (~110K tokens) matching OpenClaw's
     // agents.defaults.bootstrapTotalMaxChars default. Prevents exceeding model
     // context limits when many large workspace files are present.
-    const totalLimit = 150000;
+    const totalLimit = 110000;
     if (joined.length > totalLimit) {
       return '${joined.substring(0, totalLimit)}\n\n[... system prompt truncated at 150,000 chars ...]';
     }
@@ -2459,7 +2492,7 @@ If you have exhausted ALL approaches above (minimum 8-10 different attempts) and
         // Older extended thinking: explicit budget
         final budget = switch (level) {
           'low' => 1024,
-          'medium' => 5000,
+          'medium' => 1000,
           'high' => 16000,
           _ => null,
         };
@@ -2573,7 +2606,7 @@ If you have exhausted ALL approaches above (minimum 8-10 different attempts) and
       i--
     ) {
       final msg = context[i];
-      if (msg.role == 'tool' && (msg.content?.length ?? 0) > 5000) {
+      if (msg.role == 'tool' && (msg.content?.length ?? 0) > 1000) {
         final originalTokens = TokenBudgetManager.estimateTokens(
           msg.content ?? '',
         );

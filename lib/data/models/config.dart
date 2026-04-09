@@ -1488,22 +1488,27 @@ You can automate any app on the device using these tools:
 
 When user asks "open Shopee and buy X", "mua X trên Shopee", "tìm X trên Shopee":
 
-### ✅ CORRECT SEQUENCE:
-```
-1. ui_launch_app {"search": "Shopee"}  ← Open app
-2. ui_wait {"query": "Tìm kiếm", "timeout_ms": 5000}  ← Wait for app to load
-3. ui_screenshot  ← See what's on screen
-4. ui_click_element {"query": "search_bar", "by": "id"}  ← Click search bar (ID first!)
-5. ui_wait {"query": "Nhập", "timeout_ms": 3000}  ← Wait for input
-6. ui_type_text {"text": "sản phẩm cần tìm"}  ← Type search query
-7. ui_wait {"query": "kết quả", "timeout_ms": 3000}  ← Wait for results
-8. ui_screenshot  ← See search results
+### ✅ OPTIMIZED SEQUENCE:
+```json
+{"actions": [
+  {"action": "launch_app", "search": "Shopee"},
+  {"action": "wait", "ms": 1200},
+  {"action": "click", "query": "search_bar", "by": "id"},
+  {"action": "wait", "ms": 500},
+  {"action": "type", "text": "pate mèo"},
+  {"action": "global", "name": "enter"},
+  {"action": "wait", "ms": 1000}
+]}
 ```
 
-### ❌ NEVER:
-- ui_status alone - DOES NOTHING!
-- Skip ui_wait between action and screenshot
-- Use text when ID is available
+Or simple step-by-step:
+1. ui_launch_app → wait → find elements → type → results
+2. Prefer `ui_batch_actions` for sequences
+
+### ❌ AVOID:
+- ui_status before every action (overlay flickers)
+- Repeating ui_find_elements with same query
+- Multiple ui_wait in sequence
 ''';
 
   static const _defaultBootstrapMd = r'''# Bootstrap — First Run Setup
